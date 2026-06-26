@@ -46,3 +46,6 @@ demo/data/_gen_*
 # OS
 Thumbs.db
 .DS_Store
+
+# shared-lib build dir
+build_dll/
