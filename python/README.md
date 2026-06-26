@@ -1,10 +1,8 @@
-# FLUXmeme Python package (v1.0 — code-complete, validation pending CPython)
+# FLUXmeme Python package
 
-Status: the Python API (`Store`, `Record`, transcoders) is **code-complete** and
-mirrors the C library via `ctypes`. It is **not yet validated here** because the
-dev machine has no real CPython (only the Windows Store stub). Struct layout in
-`_core.py` must match `include/fluxmeme/types.h` exactly (validated by the tests
-below once CPython is installed).
+Status: **validated** with CPython 3.10 (`pytest` green). The Python API
+(`Store`, `Record`, transcoders) mirrors the C library via `ctypes`; struct
+layout in `_core.py` matches `include/fluxmeme/types.h`.
 
 ## Validate (once CPython ≥ 3.10 is installed)
 

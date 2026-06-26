@@ -151,7 +151,7 @@ def _record_to_c(rec: Record):
         for i, (k, v) in enumerate(rec.meta.items()):
             arr[i].key = str(k).encode()
             arr[i].val = str(v).encode()
-        c.meta = ctypes.cast(arr, POINTER(flux_meta_kv_t))
+        c.meta = ctypes.cast(arr, ctypes.POINTER(flux_meta_kv_t))
         c.meta_count = len(rec.meta)
         keep.append(arr)
     if rec.links:
@@ -159,12 +159,12 @@ def _record_to_c(rec: Record):
         for i, (tgt, rel) in enumerate(rec.links):
             larr[i].target.bytes = (ctypes.c_uint8 * 16)(*_hex_to_id(tgt))
             larr[i].rel = rel.encode()
-        c.links = ctypes.cast(larr, POINTER(flux_link_t))
+        c.links = ctypes.cast(larr, ctypes.POINTER(flux_link_t))
         c.link_count = len(rec.links)
         keep.append(larr)
     if rec.payload:
         buf = (ctypes.c_uint8 * len(rec.payload))(*rec.payload)
-        c.payload.data = ctypes.cast(buf, POINTER(ctypes.c_uint8))
+        c.payload.data = ctypes.cast(buf, ctypes.POINTER(ctypes.c_uint8))
         c.payload.len = len(rec.payload)
         keep.append(buf)
     c.ts = int(rec.ts)

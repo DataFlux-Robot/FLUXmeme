@@ -48,7 +48,14 @@ set(FLUX_CODEC
     src/codec/conv.c                   # .fluxa <-> .flux
 )
 
-add_library(fluxmeme STATIC ${FLUX_CORE} ${FLUX_TRANSCODE} ${FLUX_CODEC})
+option(FLUXMEME_SHARED "Build fluxmeme as a shared lib (for ctypes/Python)" OFF)
+if(FLUXMEME_SHARED)
+    add_library(fluxmeme SHARED ${FLUX_CORE} ${FLUX_TRANSCODE} ${FLUX_CODEC})
+    # export the whole API without per-symbol __declspec plumbing
+    set_target_properties(fluxmeme PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
+else()
+    add_library(fluxmeme STATIC ${FLUX_CORE} ${FLUX_TRANSCODE} ${FLUX_CODEC})
+endif()
 target_include_directories(fluxmeme PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 if(MSVC)
