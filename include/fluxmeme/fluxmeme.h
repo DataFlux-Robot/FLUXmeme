@@ -97,6 +97,12 @@ flux_status_t flux_from_usd(const char* in_usda, flux_txn_t* txn);
 flux_status_t flux_conv_to_fluxa(const flux_txn_t* txn, const char* out_fluxa);
 flux_status_t flux_conv_from_fluxa(const char* in_fluxa, flux_txn_t* txn);
 
+/* MAVLink: JOURNAL/signal <-> a file of MAVLink v2 frames (FLUX_PARAM message).
+ * Only signal/param records go on the bus; large assets are filtered out
+ * (SPEC §6B). Pure codec — no link/scheduling (caller drives the bus). */
+flux_status_t flux_to_mavlink(const flux_txn_t* txn, const char* out_frames);
+flux_status_t flux_from_mavlink(const char* in_frames, flux_txn_t* txn);
+
 #ifdef __cplusplus
 }
 #endif

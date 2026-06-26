@@ -41,6 +41,7 @@ set(FLUX_TRANSCODE
     src/transcode/a2a/a2a_in.c
     src/transcode/usd/usd.c            # USD transcoder (v1.0)
     src/transcode/usd/stl.c            # binary STL codec
+    src/transcode/mavlink/mavlink.c    # MAVLink v2 frame codec (JOURNAL/signal)
 )
 set(FLUX_CODEC
     src/codec/conv.c                   # .fluxa <-> .flux
@@ -80,6 +81,8 @@ add_executable(demo_robot demo/demo_robot.c)
 target_link_libraries(demo_robot PRIVATE fluxmeme)
 add_executable(demo_device demo/demo_device.c)
 target_link_libraries(demo_device PRIVATE fluxmeme)
+add_executable(demo_mavlink demo/demo_mavlink.c)
+target_link_libraries(demo_mavlink PRIVATE fluxmeme)
 
 # robot-graph facet (BODY kinematics: closed-loop cycle detection)
 # device-comm facet (BODY device/bus topology + protocol routing)
