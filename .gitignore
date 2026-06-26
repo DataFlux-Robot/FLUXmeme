@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+dist/
+build/
+.eggs/
+
+# C / CMake / MSVC
+out/
+Debug/
+Release/
+x64/
+x86/
+*.pdb
+*.ilk
+*.obj
+*.exp
+CMakeFiles/
+cmake_install.cmake
+CMakeCache.txt
+*.vcxproj*
+.vs/
+
+# Build artifacts (libs only built, not tracked)
+*.a
+*.so
+*.so.*
+*.dylib
+# NOTE: fluxmeme.lib / fluxmeme.dll are build outputs; do not track.
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Demo / test outputs
+scene.usda
+okf_out/
+a2a_out/
+mavlink_out/
+*.mcap
+demo/data/_gen_*
+
+# OS
+Thumbs.db
+.DS_Store
