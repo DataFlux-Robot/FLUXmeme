@@ -76,6 +76,12 @@ add_executable(demo_usd demo/demo_usd.c)
 target_link_libraries(demo_usd PRIVATE fluxmeme)
 add_executable(demo_conv demo/demo_conv.c)
 target_link_libraries(demo_conv PRIVATE fluxmeme)
+add_executable(demo_robot demo/demo_robot.c)
+target_link_libraries(demo_robot PRIVATE fluxmeme)
+
+# robot-graph facet (BODY kinematics: closed-loop cycle detection)
+target_sources(fluxmeme PRIVATE src/facets/robot_graph.c)
+target_include_directories(fluxmeme PUBLIC src/facets)
 
 # CLI
 add_executable(flux tools/flux.c)
