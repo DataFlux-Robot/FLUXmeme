@@ -98,11 +98,44 @@ int main(int argc, char** argv) {
         printf("  flux inspect <file>\n");
         printf("  flux dump <file>\n");
         printf("  flux transcode <file> <okf|a2a|usd> <out>\n");
+        printf("  flux conv <in> <out>   # .flux <-> .fluxa (by extension)\n");
         return 1;
     }
     if (strcmp(argv[1], "inspect") == 0) return cmd_inspect(argv[2]);
     if (strcmp(argv[1], "dump") == 0) return cmd_dump(argv[2]);
     if (strcmp(argv[1], "transcode") == 0 && argc >= 5) return cmd_transcode(argv[2], argv[3], argv[4]);
+    if (strcmp(argv[1], "conv") == 0 && argc >= 4) {
+        const char* in = argv[2];
+        const char* out = argv[3];
+        size_t inl = strlen(in), outl = strlen(out);
+        int in_fluxa = inl > 6 && strcmp(in + inl - 6, ".fluxa") == 0;
+        int in_flux = inl > 5 && strcmp(in + inl - 5, ".flux") == 0;
+        int out_fluxa = outl > 6 && strcmp(out + outl - 6, ".fluxa") == 0;
+        int out_flux = outl > 5 && strcmp(out + outl - 5, ".flux") == 0;
+        if (in_flux && out_fluxa) {
+            /* binary -> text */
+            flux_store_t* s = NULL;
+            if (flux_open(in, 0, &s) != FLUX_OK) { printf("error: %s\n", flux_last_error()); return 1; }
+            flux_txn_t* t = NULL; flux_txn_begin_read(s, &t);
+            flux_status_t st = flux_conv_to_fluxa(t, out);
+            flux_close(s);
+            printf("%s -> %s %s\n", in, out, st == FLUX_OK ? "ok" : flux_last_error());
+            return st == FLUX_OK ? 0 : 1;
+        }
+        if (in_fluxa && out_flux) {
+            /* text -> binary */
+            flux_store_t* s = NULL;
+            if (flux_open(out, 1, &s) != FLUX_OK) { printf("error: %s\n", flux_last_error()); return 1; }
+            flux_txn_t* t = NULL; flux_txn_begin_write(s, &t);
+            flux_status_t st = flux_conv_from_fluxa(in, t);
+            flux_txn_commit(t);
+            flux_close(s);
+            printf("%s -> %s %s\n", in, out, st == FLUX_OK ? "ok" : flux_last_error());
+            return st == FLUX_OK ? 0 : 1;
+        }
+        printf("conv needs one .flux and one .fluxa\n");
+        return 1;
+    }
     printf("unknown command or wrong args. run with no args for usage.\n");
     return 1;
 }

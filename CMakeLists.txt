@@ -42,8 +42,11 @@ set(FLUX_TRANSCODE
     src/transcode/usd/usd.c            # USD transcoder (v1.0)
     src/transcode/usd/stl.c            # binary STL codec
 )
+set(FLUX_CODEC
+    src/codec/conv.c                   # .fluxa <-> .flux
+)
 
-add_library(fluxmeme STATIC ${FLUX_CORE} ${FLUX_TRANSCODE})
+add_library(fluxmeme STATIC ${FLUX_CORE} ${FLUX_TRANSCODE} ${FLUX_CODEC})
 target_include_directories(fluxmeme PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 if(MSVC)
@@ -71,6 +74,8 @@ add_executable(demo_a2a demo/demo_a2a.c)
 target_link_libraries(demo_a2a PRIVATE fluxmeme)
 add_executable(demo_usd demo/demo_usd.c)
 target_link_libraries(demo_usd PRIVATE fluxmeme)
+add_executable(demo_conv demo/demo_conv.c)
+target_link_libraries(demo_conv PRIVATE fluxmeme)
 
 # CLI
 add_executable(flux tools/flux.c)

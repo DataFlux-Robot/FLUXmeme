@@ -92,6 +92,11 @@ flux_status_t flux_from_a2a(const char* in_dir, flux_txn_t* txn);
 flux_status_t flux_to_usd(const flux_txn_t* txn, const char* out_usda);
 flux_status_t flux_from_usd(const char* in_usda, flux_txn_t* txn);
 
+/* .fluxa <-> .flux: text canonical source <-> binary store. `conv` round-trips
+ * the whole store record-for-record (see SPEC §1.5). */
+flux_status_t flux_conv_to_fluxa(const flux_txn_t* txn, const char* out_fluxa);
+flux_status_t flux_conv_from_fluxa(const char* in_fluxa, flux_txn_t* txn);
+
 #ifdef __cplusplus
 }
 #endif
