@@ -1,0 +1,27 @@
+[build-system]
+requires = ["scikit-build-core>=0.10", "setuptools>=61"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "fluxmeme"
+version = "0.1.0"
+description = "FLUXmeme — self-describing asset format for embodied nodes (USD/OKF/A2A/MCU)"
+readme = "../README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+authors = [{ name = "FLUXmeme Contributors" }]
+
+[tool.scikit-build]
+# Build the C library with the Visual Studio generator on Windows (no ninja
+# needed); the compiled shared/static lib is placed next to the Python package
+# so ctypes can load it.
+cmake.args = ["-DCMAKE_BUILD_TYPE=Release"]
+wheel.packages = ["fluxmeme"]
+build-dir = "build/{wheel_tag}"
+# On Windows scikit-build-core can detect the VS generator; if CMake picks
+# Ninja and it is absent, set: cmake.generator = "Visual Studio 17 2022"
+
+[[tool.scikit-build.generate]]
+path = "fluxmeme/_version.py"
+location = "build"
+template = '''__version__ = "0.1.0"'''
