@@ -85,6 +85,12 @@ void flux_cursor_free(flux_cursor_t* c);
 /* OKF: MIND/kind=concept <-> directory of markdown + frontmatter. */
 flux_status_t flux_to_okf(const flux_txn_t* txn, const char* out_dir);
 flux_status_t flux_from_okf(const char* in_dir, flux_txn_t* txn);
+/* A2A: MIND/kind=agent_card|task <-> agent-card.json + tasks/ + artifacts/. */
+flux_status_t flux_to_a2a(const flux_txn_t* txn, const char* out_dir);
+flux_status_t flux_from_a2a(const char* in_dir, flux_txn_t* txn);
+/* USD: BODY <-> a USDA file (mesh/xform; minimal round-trip, see SPEC §1.7). */
+flux_status_t flux_to_usd(const flux_txn_t* txn, const char* out_usda);
+flux_status_t flux_from_usd(const char* in_usda, flux_txn_t* txn);
 
 #ifdef __cplusplus
 }

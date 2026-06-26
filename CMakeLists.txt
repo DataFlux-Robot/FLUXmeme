@@ -37,6 +37,9 @@ set(FLUX_CORE
 set(FLUX_TRANSCODE
     src/transcode/okf/okf_out.c
     src/transcode/okf/okf_in.c
+    src/transcode/a2a/a2a_out.c
+    src/transcode/a2a/a2a_in.c
+    src/transcode/usd/usd.c            # USD transcoder (v1.0)
 )
 
 add_library(fluxmeme STATIC ${FLUX_CORE} ${FLUX_TRANSCODE})
@@ -63,3 +66,9 @@ flux_test(test_store_mvcc)
 # Demos
 add_executable(demo_okf demo/demo_okf.c)
 target_link_libraries(demo_okf PRIVATE fluxmeme)
+add_executable(demo_a2a demo/demo_a2a.c)
+target_link_libraries(demo_a2a PRIVATE fluxmeme)
+
+# CLI
+add_executable(flux tools/flux.c)
+target_link_libraries(flux PRIVATE fluxmeme)
