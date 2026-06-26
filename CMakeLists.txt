@@ -78,9 +78,12 @@ add_executable(demo_conv demo/demo_conv.c)
 target_link_libraries(demo_conv PRIVATE fluxmeme)
 add_executable(demo_robot demo/demo_robot.c)
 target_link_libraries(demo_robot PRIVATE fluxmeme)
+add_executable(demo_device demo/demo_device.c)
+target_link_libraries(demo_device PRIVATE fluxmeme)
 
 # robot-graph facet (BODY kinematics: closed-loop cycle detection)
-target_sources(fluxmeme PRIVATE src/facets/robot_graph.c)
+# device-comm facet (BODY device/bus topology + protocol routing)
+target_sources(fluxmeme PRIVATE src/facets/robot_graph.c src/facets/device_comm.c)
 target_include_directories(fluxmeme PUBLIC src/facets)
 
 # CLI
