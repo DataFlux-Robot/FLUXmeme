@@ -103,6 +103,12 @@ flux_status_t flux_conv_from_fluxa(const char* in_fluxa, flux_txn_t* txn);
 flux_status_t flux_to_mavlink(const flux_txn_t* txn, const char* out_frames);
 flux_status_t flux_from_mavlink(const char* in_frames, flux_txn_t* txn);
 
+/* Robot description import: URDF/SDF XML -> BODY robot-graph records
+ * (robot/link + robot/joint with parent/child edges). URDF is a tree; cycles
+ * (closed loops) can be added afterward via robot/constraint. */
+flux_status_t flux_from_urdf(const char* in_urdf, flux_txn_t* txn);
+flux_status_t flux_from_sdf(const char* in_sdf, flux_txn_t* txn);
+
 #ifdef __cplusplus
 }
 #endif
