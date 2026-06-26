@@ -1,15 +1,20 @@
-/* composition — read-time merged view over a layer stack. */
+/* composition — LIVRPS field-level merge + variants over a layer stack. */
 #include "compose.h"
 #include <stdlib.h>
 #include <string.h>
+
+#define FLUX_MAX_VARIANTS 8
 
 struct flux_compose {
     flux_store_t** layers; /* [0]=root, then sublayers strongest-first */
     size_t n_layers;
     char* root_dir;
+    char vset[FLUX_MAX_VARIANTS][32];
+    char vval[FLUX_MAX_VARIANTS][32];
+    int n_variants;
 };
 
-/* dirname of a path (malloc'd, no trailing sep). */
+/* ---- path helpers ---- */
 static char* path_dirname(const char* p) {
     const char* slash = strrchr(p, '/');
     const char* bslash = strrchr(p, '\\');
@@ -22,7 +27,6 @@ static char* path_dirname(const char* p) {
     d[n] = '\0';
     return d;
 }
-
 static char* join(const char* dir, const char* rel) {
     size_t ld = strlen(dir), lr = strlen(rel);
     char* s = (char*)malloc(ld + 1 + lr + 1);
@@ -32,15 +36,14 @@ static char* join(const char* dir, const char* rel) {
     s[ld + 1 + lr] = '\0';
     return s;
 }
-
 static const char* meta_val(const flux_record_t* r, const char* key) {
     for (uint32_t i = 0; i < r->meta_count; ++i)
         if (r->meta[i].key && strcmp(r->meta[i].key, key) == 0)
             return r->meta[i].val ? r->meta[i].val : "";
     return "";
 }
+static char* dup_str(const char* s) { return s ? strdup(s) : NULL; }
 
-/* pull the ';'-separated sublayers list from the root's flux/compose record */
 static flux_status_t read_sublayers(flux_store_t* root, char** out_list) {
     *out_list = NULL;
     flux_txn_t* t = NULL;
@@ -58,7 +61,7 @@ static flux_status_t read_sublayers(flux_store_t* root, char** out_list) {
         flux_record_free(&r);
     }
     flux_iter_free(it);
-    flux_txn_rollback(t); /* free read txn */
+    flux_txn_rollback(t);
     return FLUX_OK;
 }
 
@@ -103,38 +106,125 @@ void flux_compose_close(flux_compose_t* c) {
     free(c);
 }
 
-size_t flux_compose_n_layers(const flux_compose_t* c) {
-    return c ? c->n_layers : 0;
+size_t flux_compose_n_layers(const flux_compose_t* c) { return c ? c->n_layers : 0; }
+
+flux_status_t flux_compose_set_variant(flux_compose_t* c, const char* set, const char* value) {
+    if (!c || !set) return FLUX_ERR_ARG;
+    for (int i = 0; i < c->n_variants; ++i) {
+        if (strcmp(c->vset[i], set) == 0) {
+            if (value && *value) strncpy(c->vval[i], value, sizeof(c->vval[i]) - 1);
+            else { /* clear: swap-remove */
+                c->vset[i][0] = '\0'; c->vval[i][0] = '\0';
+            }
+            return FLUX_OK;
+        }
+    }
+    if (c->n_variants >= FLUX_MAX_VARIANTS || !(value && *value)) return FLUX_OK;
+    strncpy(c->vset[c->n_variants], set, sizeof(c->vset[0]) - 1);
+    strncpy(c->vval[c->n_variants], value, sizeof(c->vval[0]) - 1);
+    c->n_variants++;
+    return FLUX_OK;
+}
+
+/* is this record's variant active under the current selection? */
+static int variant_active(const flux_compose_t* c, const flux_record_t* r) {
+    const char* v = meta_val(r, "flux_variant");
+    if (!*v) return 1; /* un-tagged base: always active */
+    const char* set = meta_val(r, "flux_variant_set");
+    for (int i = 0; i < c->n_variants; ++i)
+        if (strcmp(c->vset[i], set) == 0 && strcmp(c->vval[i], v) == 0)
+            return 1;
+    return 0;
+}
+
+/* ---- field-level merge ---- */
+static void meta_set(flux_record_t* out, const char* key, const char* val) {
+    for (uint32_t i = 0; i < out->meta_count; ++i)
+        if (out->meta[i].key && strcmp(out->meta[i].key, key) == 0) return; /* keep strongest */
+    out->meta = realloc((void*)out->meta, (out->meta_count + 1) * sizeof(flux_meta_kv_t));
+    ((flux_meta_kv_t*)out->meta)[out->meta_count].key = strdup(key);
+    ((flux_meta_kv_t*)out->meta)[out->meta_count].val = strdup(val);
+    out->meta_count++;
+}
+static void link_add(flux_record_t* out, const flux_link_t* lk) {
+    for (uint32_t i = 0; i < out->link_count; ++i)
+        if (memcmp(out->links[i].target.bytes, lk->target.bytes, 16) == 0)
+            return; /* dedup by target */
+    out->links = realloc((void*)out->links, (out->link_count + 1) * sizeof(flux_link_t));
+    flux_link_t* dst = &((flux_link_t*)out->links)[out->link_count++];
+    memcpy(dst->target.bytes, lk->target.bytes, 16);
+    dst->rel = lk->rel ? strdup(lk->rel) : NULL;
+}
+
+/* collect active versions (strongest first) and merge field-by-field into out */
+static flux_status_t compose_resolve(flux_compose_t* c, const flux_id_t* id, flux_record_t* out) {
+    memset(out, 0, sizeof(*out));
+    out->id = *id;
+    int have = 0;
+    /* iterate layers strongest-first; merge */
+    for (size_t li = 0; li < c->n_layers; ++li) {
+        flux_txn_t* t = NULL;
+        if (flux_txn_begin_read(c->layers[li], &t) != FLUX_OK) continue;
+        flux_record_t r;
+        if (flux_get(t, id, &r) == FLUX_OK && variant_active(c, &r)) {
+            have = 1;
+            /* scalar fields: strongest non-empty wins */
+            if (!out->kind && r.kind) out->kind = dup_str(r.kind);
+            if (!out->ptype && r.ptype) out->ptype = dup_str(r.ptype);
+            if (!out->path && r.path) out->path = dup_str(r.path);
+            if (!have || li == 0) {
+                /* layer/pclass/clock/ts/ver from the strongest active version */
+                if (out->pclass == 0) out->pclass = r.pclass;
+                if (out->layer == 0) out->layer = r.layer;
+                if (out->clock == 0) out->clock = r.clock;
+                if (out->ts == 0) out->ts = r.ts;
+                if (out->ver == 0) out->ver = r.ver;
+            }
+            /* payload: strongest non-empty */
+            if (out->payload.len == 0 && r.payload.len) {
+                uint8_t* p = (uint8_t*)malloc(r.payload.len);
+                memcpy(p, r.payload.data, r.payload.len);
+                out->payload.data = p;
+                out->payload.len = r.payload.len;
+            }
+            /* meta: strongest-wins-per-key */
+            for (uint32_t i = 0; i < r.meta_count; ++i) {
+                const char* k = r.meta[i].key ? r.meta[i].key : "";
+                const char* v = r.meta[i].val ? r.meta[i].val : "";
+                if (strcmp(k, "flux_variant") == 0 || strcmp(k, "flux_variant_set") == 0)
+                    continue; /* internal; don't leak into merged view */
+                meta_set(out, k, v);
+            }
+            /* links: union */
+            for (uint32_t i = 0; i < r.link_count; ++i)
+                link_add(out, &r.links[i]);
+            flux_record_free(&r);
+        } else if (flux_get(t, id, &r) == FLUX_OK) {
+            flux_record_free(&r); /* present but variant-inactive */
+        }
+        flux_txn_rollback(t);
+    }
+    return have ? FLUX_OK : FLUX_ERR_NOTFOUND;
 }
 
 flux_status_t flux_compose_get(flux_compose_t* c, const flux_id_t* id, flux_record_t* out) {
     if (!c || !id || !out) return FLUX_ERR_ARG;
-    for (size_t i = 0; i < c->n_layers; ++i) {
-        flux_txn_t* t = NULL;
-        if (flux_txn_begin_read(c->layers[i], &t) != FLUX_OK) continue;
-        flux_status_t st = flux_get(t, id, out);
-        flux_txn_rollback(t);
-        if (st == FLUX_OK) return FLUX_OK; /* strongest layer wins */
-    }
-    return FLUX_ERR_NOTFOUND;
+    return compose_resolve(c, id, out);
 }
 
 /* ---- merged scan ---- */
 struct flux_compose_iter {
-    flux_id_t* ids;   /* unique ids, strongest-first assignment stored per id */
-    size_t n_ids;
-    size_t cur;
+    flux_id_t* ids;
+    size_t n_ids, cur;
     flux_compose_t* c;
     flux_filter_t f;
     int has_filter;
 };
-
 static int id_seen(const flux_id_t* ids, size_t n, const flux_id_t* id) {
     for (size_t i = 0; i < n; ++i)
         if (memcmp(ids[i].bytes, id->bytes, 16) == 0) return 1;
     return 0;
 }
-
 flux_status_t flux_compose_scan(flux_compose_t* c, const flux_filter_t* f,
                                 flux_compose_iter_t** out) {
     if (!c || !out) return FLUX_ERR_ARG;
@@ -143,8 +233,6 @@ flux_status_t flux_compose_scan(flux_compose_t* c, const flux_filter_t* f,
     it->c = c;
     it->has_filter = f ? 1 : 0;
     if (f) it->f = *f;
-    it->ids = NULL;
-    /* walk layers strongest-first; first sight of an id fixes its resolution */
     for (size_t li = 0; li < c->n_layers; ++li) {
         flux_txn_t* t = NULL;
         if (flux_txn_begin_read(c->layers[li], &t) != FLUX_OK) continue;
@@ -152,6 +240,7 @@ flux_status_t flux_compose_scan(flux_compose_t* c, const flux_filter_t* f,
         flux_scan(t, NULL, &lit);
         flux_record_t r;
         while (flux_iter_next(lit, &r) == FLUX_OK) {
+            if (r.kind && strcmp(r.kind, "flux/compose") == 0) { flux_record_free(&r); continue; }
             if (!id_seen(it->ids, it->n_ids, &r.id)) {
                 it->ids = realloc(it->ids, (it->n_ids + 1) * sizeof(flux_id_t));
                 it->ids[it->n_ids++] = r.id;
@@ -164,13 +253,11 @@ flux_status_t flux_compose_scan(flux_compose_t* c, const flux_filter_t* f,
     *out = it;
     return FLUX_OK;
 }
-
 static int matches(const flux_record_t* r, const flux_filter_t* f) {
     if (f->layer_mask && !(r->layer & f->layer_mask)) return 0;
     if (f->kind && (!r->kind || strcmp(r->kind, f->kind) != 0)) return 0;
     return 1;
 }
-
 flux_status_t flux_compose_iter_next(flux_compose_iter_t* it, flux_record_t* out) {
     if (!it || !out) return FLUX_ERR_ARG;
     while (it->cur < it->n_ids) {
@@ -181,7 +268,6 @@ flux_status_t flux_compose_iter_next(flux_compose_iter_t* it, flux_record_t* out
     }
     return FLUX_ERR_NOTFOUND;
 }
-
 void flux_compose_iter_free(flux_compose_iter_t* it) {
     if (!it) return;
     free(it->ids);

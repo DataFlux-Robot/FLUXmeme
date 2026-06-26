@@ -85,6 +85,8 @@ add_executable(demo_mavlink demo/demo_mavlink.c)
 target_link_libraries(demo_mavlink PRIVATE fluxmeme)
 add_executable(demo_compose demo/demo_compose.c)
 target_link_libraries(demo_compose PRIVATE fluxmeme)
+add_executable(demo_livrps demo/demo_livrps.c)
+target_link_libraries(demo_livrps PRIVATE fluxmeme)
 
 # robot-graph facet (BODY kinematics: closed-loop cycle detection)
 # device-comm facet (BODY device/bus topology + protocol routing)
