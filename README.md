@@ -105,7 +105,33 @@ single source behind them.
 - **Engineering baseline:** untrusted-input hardening caps, CI matrix
   (Win MSVC + Linux gcc), governance (CONTRIBUTING/COC/RFC/SECURITY).
 
-## Quickstart
+## Installation
+
+### Python (recommended for sim / agent integration)
+
+```bash
+pip install git+https://github.com/DataFlux-Robot/FLUXmeme.git
+```
+
+That's it — scikit-build-core compiles the C library automatically and bundles
+it in the wheel. No manual CMake, no separate DLL. Works on Windows (MSVC),
+Linux (gcc), and macOS (clang).
+
+> **Windows:** if `pip install` can't find a compiler, run it from a **VS 2022
+> Developer prompt** (`x64 Native Tools Command Prompt for VS 2022`).
+
+```python
+from fluxmeme import Store, Record, LAYER_MIND, LAYER_BODY, LAYER_JOURNAL
+
+with Store("robot.flux", writable=True) as s:
+    with s.write() as txn:
+        s.put(txn, Record(layer=LAYER_MIND, kind="concept", payload=b"# Greet"))
+    with s.read() as txn:
+        s.to_usd(txn, "scene.usda")    # BODY -> USD
+        s.to_okf(txn, "okf_out/")      # MIND -> OKF
+```
+
+### From source (C library + CLI + demos)
 
 ```bat
 :: Windows (VS 2022 Developer prompt, or the VS-bundled CMake):
@@ -248,7 +274,7 @@ NVIDIA 的 **SimReady** 让 3D 资产**物理准确**——一个 mesh 带着实
 
 ## 快速开始
 
-见上方 **Quickstart**(英文段)——Windows / Linux / macOS 命令相同;C 与 Python 示例亦通用。
+见上方 **Installation**(英文段)——支持 `pip install`(推荐,自动编译 C 库)和 CMake 源码构建两种方式;Windows / Linux / macOS 命令相同;C 与 Python 示例亦通用。
 
 ## 三层架构
 
