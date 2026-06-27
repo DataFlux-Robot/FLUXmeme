@@ -49,3 +49,8 @@ Thumbs.db
 
 # shared-lib build dir
 build_dll/
+
+# runtime artifacts (test/demo outputs)
+*.flux
+*.fluxa
+*.frames
