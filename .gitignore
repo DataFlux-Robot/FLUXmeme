@@ -54,3 +54,9 @@ build_dll/
 *.flux
 *.fluxa
 *.frames
+
+# more demo runtime outputs
+*.usda
+*.urdf
+*.sdf
+lifecycle_okf/
