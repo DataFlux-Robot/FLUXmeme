@@ -1,0 +1,35 @@
+[build-system]
+requires = ["scikit-build-core>=0.10", "setuptools>=61"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "fluxmeme"
+version = "0.1.0"
+description = "DevReady assets — the upgrade from SimReady. Self-describing asset format for embodied AI."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+authors = [{ name = "FLUXmeme Contributors" }]
+keywords = ["robotics", "embodied-ai", "simready", "devready", "asset-format", "usd", "mcap", "mavlink", "okf", "a2a"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: C",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries",
+]
+
+[project.urls]
+Homepage = "https://github.com/DataFlux-Robot/FLUXmeme"
+Documentation = "https://github.com/DataFlux-Robot/FLUXmeme/blob/main/SPEC.md"
+Repository = "https://github.com/DataFlux-Robot/FLUXmeme"
+
+[tool.scikit-build]
+# Build the shared lib (ctypes-loadable) and install it into the package.
+cmake.args = ["-DFLUXMEME_SHARED=ON", "-DCMAKE_BUILD_TYPE=Release"]
+cmake.targets = ["fluxmeme"]           # only build the lib, skip demos/tests
+wheel.packages = ["python/fluxmeme"]   # the Python package location
+wheel.license-files = ["LICENSE"]

@@ -47,7 +47,7 @@ files no single tool understands — and none run on the robot itself.
 | **Composition** | USD layers (scene-centric) | **LIVRPS, decentralized** (each robot = one autonomous node) |
 | **Robot model** | tree (URDF); closed loops need sidecars | **graph, closed loops first-class** (4-bar / Delta / Stewart) |
 | **Edge / MCU** | no (USD is desktop-only) | **yes** — lean C core runs on a Cortex-M7; same bytes |
-| **Lifecycle** | born in sim, dies in sim | **generate → reuse → operate** — the journal grows on-device |
+| **Lifecycle** | born in sim, dies in sim | **born in reality, perpetually real** — the asset lives across the full lifecycle |
 
 The design bet: **the asset that accompanies an embodied agent through its entire
 life should be one artifact** — not a folder that drifts apart. SimReady made
@@ -161,14 +161,30 @@ full LIVRPS — is Tier 3 and never compiled into MCU firmware). See
 - 🔜 **v1.1+** MJCF import; inherit/specialize arcs; **CAN / EtherCAT** frame codecs
 - 🔜 **MCU** STM32H7/FLUXLOOP on-device full read/write + the on-device PHM hero
 
+## FLUXLOOP — the reference edge device
+
+[**FLUXLOOP**](https://github.com/DataFlux-Robot/FLUXLOOP) is the first hardware
+platform that natively reads and writes `.flux` DevReady assets **on-device**
+(STM32-based, RTOS). It is the reference edge device for the "operate" phase of
+the lifecycle: a FLUXLOOP device *generates* a `.flux` (measured body + mind),
+*reuses* it across sim/deploy/agent, and *accrues its PHM journal on-device* —
+all in the same artifact. FLUXmeme's lean C core (Tier 2 middleware) is the
+software that runs on FLUXLOOP; the `.flux` written on a cloud GPU is read
+unchanged on the Cortex-M7.
+
+> **FLUXLOOP defines the complexity budget.** If it doesn't fit on the MCU, it
+> doesn't ship. That constraint is what keeps the format honest, portable, and
+> truly edge-ready — not "edge-ready" as a marketing slogan.
+
 ## For adopters
 
 - **Robotics teams:** replace the drifting sidecar folder with one artifact that
   your robot *and* your simulator *and* your agents share — and that travels to
   the edge. URDF/SDF/SimReady import is one command.
-- **Sim platforms (NVIDIA Isaac Sim, Gazebo):** FLUXmeme is the **single source**
-  behind your USD/MCAP; you keep your tools, gain a unified, agent-readable,
-  lifecycle-spanning asset.
+- **Sim platforms ([Isaac Lab](https://github.com/isaac-sim/IsaacLab),
+  [Newton](https://github.com/newton-physics/newton), Gazebo):** FLUXmeme is the
+  **single source** behind your USD/MCAP; `pip install fluxmeme` and your Python
+  sim stack reads/writes DevReady assets natively.
 - **Agent / VLA startups:** agents read assets **without a runtime**; one `.flux`
   feeds sim scene + task knowledge + skills + live telemetry.
 - **Standards-minded:** MIT, spec-first (independent single-page SPEC), open
@@ -196,7 +212,7 @@ NVIDIA 的 **SimReady** 让 3D 资产**物理准确**——一个 mesh 带着实
 | **组合** | USD 层(以场景为中心) | **LIVRPS,去中心化**(每个机器人 = 一个自治节点) |
 | **机器人模型** | 纯树(URDF);闭链要 sidecar | **图,闭链一等公民**(四连杆/Delta/Stewart) |
 | **边缘 / MCU** | 否(USD 仅桌面) | **是**——精简 C 核心跑在 Cortex-M7;字节相同 |
-| **生命周期** | 生于仿真,死于仿真 | **生成→复用→运维**——日志在设备上生长 |
+| **生命周期** | 生于仿真,死于仿真 | **生于真实,永续真实**——资产贯穿全生命周期 |
 
 设计赌注:**伴随具身 agent 一生的资产应该是一个工件**——不是一个会漂移分离的文件夹。SimReady 让资产"物理真实";DevReady 让资产"**认知与操作真实**",且**可上边缘**。
 
@@ -250,10 +266,16 @@ NVIDIA 的 **SimReady** 让 3D 资产**物理准确**——一个 mesh 带着实
 - 🔜 **v1.1+** MJCF 导入;inherit/specialize 弧;**CAN / EtherCAT** 帧 codec
 - 🔜 **MCU** STM32H7/FLUXLOOP 真机全读写 + on-device PHM hero
 
+## FLUXLOOP —— 参考边缘设备
+
+[**FLUXLOOP**](https://github.com/DataFlux-Robot/FLUXLOOP) 是首个**原生读写 `.flux` DevReady 资产**的硬件平台(基于 STM32,RTOS)。它是"运维"阶段的参考边缘设备:FLUXLOOP 设备*生成* `.flux`(测量锚定的身体+心智)、跨仿真/部署/agent *复用*、并在设备本体上*累积 PHM 终身日志*——全部在同一个工件里。FLUXmeme 的精简 C 核心(Tier 2 中间件)就是跑在 FLUXLOOP 上的软件;云 GPU 上写的 `.flux` 烧到 Cortex-M7 上原样可读。
+
+> **FLUXLOOP 定义了复杂度上限。** 放不进 MCU 的,就不发版。这个约束让格式保持诚实、可移植、真正边缘就绪——不是营销口号式的"边缘就绪"。
+
 ## 给采用者
 
 - **机器人团队**:用**一个工件**替换漂移的 sidecar 文件夹——你的机器人、仿真器、agent 共享同一份,且能上边缘。URDF/SDF/SimReady 一键导入。
-- **仿真平台(NVIDIA Isaac Sim、Gazebo)**:FLUXmeme 是 USD/MCAP 背后的**单一源**——保留你的工具,获得一个统一、agent 可读、贯穿生命周期的资产。
+- **仿真平台([Isaac Lab](https://github.com/isaac-sim/IsaacLab)、[Newton](https://github.com/newton-physics/newton)、Gazebo)**:FLUXmeme 是 USD/MCAP 背后的**单一源**——`pip install fluxmeme`,Python 仿真栈原生读写 DevReady 资产。
 - **agent / VLA 初创**:agent **无需运行时**即可读资产;一个 `.flux` 同时喂仿真场景 + 任务知识 + 技能 + 实时遥测。
 - **标准化导向**:MIT、spec 优先(独立单页 SPEC)、day-1 开放治理、瞄 foundation(Linux Foundation / ASWF)。
 

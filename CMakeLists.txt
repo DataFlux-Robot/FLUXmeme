@@ -56,6 +56,11 @@ if(FLUXMEME_SHARED)
     add_library(fluxmeme SHARED ${FLUX_CORE} ${FLUX_TRANSCODE} ${FLUX_CODEC})
     # export the whole API without per-symbol __declspec plumbing
     set_target_properties(fluxmeme PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
+    # install the shared lib into the Python package dir (for pip/wheel)
+    install(TARGETS fluxmeme
+            RUNTIME DESTINATION fluxmeme   # Windows .dll
+            LIBRARY DESTINATION fluxmeme   # Linux .so / Mac .dylib
+            ARCHIVE DESTINATION fluxmeme)
 else()
     add_library(fluxmeme STATIC ${FLUX_CORE} ${FLUX_TRANSCODE} ${FLUX_CODEC})
 endif()
