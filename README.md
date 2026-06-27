@@ -131,6 +131,66 @@ with Store("robot.flux", writable=True) as s:
         s.to_okf(txn, "okf_out/")      # MIND -> OKF
 ```
 
+### Quick demo: USD <-> .flux + Newton integration
+
+After `pip install`, run the Newton integration demo (no Newton required for the
+conversion part):
+
+```bash
+python demo/demo_newton.py              # USD -> .flux -> USD round-trip + advantages
+python demo/demo_newton.py --newton     # also runs a Newton sim (if installed)
+```
+
+```
+1. USD -> .flux  (ingest a SimReady/Newton asset)
+   [OK] Ingested 2 BODY records (meshes) from cartpole.usda
+   [OK] Added 2 MIND records (task concept + agent card)
+   -> USD alone would only have 2 meshes; .flux has BODY + MIND
+
+2. .flux -> USD  (project BODY back; round-trip)
+   [OK] Exported BODY -> cartpole_from_flux.usda
+   [OK] .flux contains: 2 BODY + 2 MIND
+   [OK] Also exported .fluxa (text canonical source, 3405 bytes)
+
+3. .flux file advantages (vs plain USD)
+   BODY    : 2 records
+   MIND    : 2 records
+   USD  (cartpole.usda):      2186 bytes -- scene only
+   .flux(cartpole.flux):      2156 bytes -- scene + knowledge + journal
+   .fluxa(cartpole.fluxa):    3405 bytes -- human-readable, diff-friendly
+
+4. Newton (skipped -- run with --newton to enable)
+   pip install newton-physics warp-lang
+   python demo/demo_newton.py --newton
+   python -m newton.examples robot_g1
+```
+
+The full Python API for integration with [Newton](https://github.com/newton-physics/newton),
+[Isaac Lab](https://github.com/isaac-sim/IsaacLab), or any sim framework:
+
+```python
+from fluxmeme import Store, Record, LAYER_BODY, LAYER_MIND, LAYER_JOURNAL
+
+with Store("robot.flux", writable=True) as s:
+    # USD -> .flux (ingest a SimReady/Newton asset)
+    with s.write() as txn:
+        s.from_usd(txn, "cartpole.usda")
+    # .flux advantage: add knowledge that USD can't carry
+    with s.write() as txn:
+        s.put(txn, Record(layer=LAYER_MIND, kind="concept",
+                          meta={"title": "Balance the pole"},
+                          payload=b"# Cart-pole task"))
+
+with Store("robot.flux") as s, s.read() as txn:
+    s.to_usd(txn, "for_newton.usda")       # BODY -> USD for Newton/Isaac Sim
+    s.to_okf(txn, "for_agent/")            # MIND -> OKF for VLA prompting
+    s.to_mcap(txn, "for_replay.mcap")      # JOURNAL -> MCAP for rosbag2
+    s.to_mavlink(txn, "for_edge.frames")   # JOURNAL -> MAVLink for MCU
+    body = list(s.scan(txn, layer=LAYER_BODY))
+    mind = list(s.scan(txn, layer=LAYER_MIND))
+    print(f".flux: {len(body)} BODY + {len(mind)} MIND (USD alone: {len(body)} only)")
+```
+
 ### From source (C library + CLI + demos)
 
 ```bat
