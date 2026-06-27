@@ -113,6 +113,11 @@ flux_status_t flux_from_mavlink(const char* in_frames, flux_txn_t* txn);
 flux_status_t flux_from_urdf(const char* in_urdf, flux_txn_t* txn);
 flux_status_t flux_from_sdf(const char* in_sdf, flux_txn_t* txn);
 
+/* MCAP (rosbag2): JOURNAL/signal <-> a .mcap file (the journal's primary
+ * projection — a structured rosbag replacement carrying asset context). */
+flux_status_t flux_to_mcap(const flux_txn_t* txn, const char* out_mcap);
+flux_status_t flux_from_mcap(const char* in_mcap, flux_txn_t* txn);
+
 #ifdef __cplusplus
 }
 #endif

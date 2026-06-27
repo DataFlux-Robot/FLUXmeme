@@ -45,6 +45,7 @@ set(FLUX_TRANSCODE
     src/transcode/mavlink/mavlink.c    # MAVLink v2 frame codec (JOURNAL/signal)
     src/transcode/robotdesc/robotdesc.c # URDF/SDF import -> robot-graph
     src/transcode/registry.c            # transcoder registry (extension point)
+    src/transcode/mcap/mcap.c           # MCAP (rosbag2) JOURNAL transcoder
 )
 set(FLUX_CODEC
     src/codec/conv.c                   # .fluxa <-> .flux
@@ -102,6 +103,8 @@ add_executable(demo_urdf demo/demo_urdf.c)
 target_link_libraries(demo_urdf PRIVATE fluxmeme)
 add_executable(demo_lifecycle demo/demo_lifecycle.c)
 target_link_libraries(demo_lifecycle PRIVATE fluxmeme)
+add_executable(demo_mcap demo/demo_mcap.c)
+target_link_libraries(demo_mcap PRIVATE fluxmeme)
 
 # robot-graph facet (BODY kinematics: closed-loop cycle detection)
 # device-comm facet (BODY device/bus topology + protocol routing)
