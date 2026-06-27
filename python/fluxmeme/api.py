@@ -131,6 +131,23 @@ class Store:
     def from_usd(self, txn, in_usda: str): _core._check(_core._lib.flux_from_usd(in_usda.encode(), txn), "from_usd")
     def to_fluxa(self, txn, out: str): _core._check(_core._lib.flux_conv_to_fluxa(txn, out.encode()), "to_fluxa")
     def from_fluxa(self, txn, inp: str): _core._check(_core._lib.flux_conv_from_fluxa(inp.encode(), txn), "from_fluxa")
+    def to_mcap(self, txn, out: str): _core._check(_core._lib.flux_to_mcap(txn, out.encode()), "to_mcap")
+    def from_mcap(self, txn, inp: str): _core._check(_core._lib.flux_from_mcap(inp.encode(), txn), "from_mcap")
+    def from_urdf(self, txn, inp: str): _core._check(_core._lib.flux_from_urdf(inp.encode(), txn), "from_urdf")
+    def from_sdf(self, txn, inp: str): _core._check(_core._lib.flux_from_sdf(inp.encode(), txn), "from_sdf")
+    def to_mavlink(self, txn, out: str): _core._check(_core._lib.flux_to_mavlink(txn, out.encode()), "to_mavlink")
+    def from_mavlink(self, txn, inp: str): _core._check(_core._lib.flux_from_mavlink(inp.encode(), txn), "from_mavlink")
+
+    def delete(self, txn, rid: str):
+        """Tombstone a record by hex id."""
+        cid = _core.flux_id_t()
+        cid.bytes = (ctypes.c_uint8 * 16)(*_hex_to_id(rid))
+        _core._check(_core._lib.flux_del(txn, ctypes.byref(cid)), "delete")
+
+    @staticmethod
+    def compact(path: str):
+        """Reclaim append-only growth (drop tombstones + superseded versions)."""
+        _core._check(_core._lib.flux_compact(path.encode()), "compact")
 
 
 # ---- marshaling ------------------------------------------------------------

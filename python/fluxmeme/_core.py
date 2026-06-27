@@ -104,6 +104,14 @@ _lib.flux_to_usd.argtypes = [c_void_p, c_char_p]
 _lib.flux_from_usd.argtypes = [c_char_p, c_void_p]
 _lib.flux_conv_to_fluxa.argtypes = [c_void_p, c_char_p]
 _lib.flux_conv_from_fluxa.argtypes = [c_char_p, c_void_p]
+_lib.flux_to_mcap.argtypes = [c_void_p, c_char_p]
+_lib.flux_from_mcap.argtypes = [c_char_p, c_void_p]
+_lib.flux_from_urdf.argtypes = [c_char_p, c_void_p]
+_lib.flux_from_sdf.argtypes = [c_char_p, c_void_p]
+_lib.flux_to_mavlink.argtypes = [c_void_p, c_char_p]
+_lib.flux_from_mavlink.argtypes = [c_char_p, c_void_p]
+_lib.flux_del.argtypes = [c_void_p, POINTER(flux_id_t)]
+_lib.flux_compact.argtypes = [c_char_p]
 
 
 class FluxError(Exception):
