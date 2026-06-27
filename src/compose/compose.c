@@ -207,6 +207,49 @@ static flux_status_t compose_resolve(flux_compose_t* c, const flux_id_t* id, flu
         }
         flux_txn_rollback(t);
     }
+
+    /* inherit arc: meta flux_inherit=<base_id_hex> pulls the base record's
+     * fields as WEAKER (fills gaps the resolved record doesn't have).
+     * One level deep (no recursion) to bound complexity. */
+    if (have) {
+        const char* inh = meta_val(out, "flux_inherit");
+        if (*inh) {
+            flux_id_t base_id;
+            if (flux_id_from_hex(inh, &base_id) == FLUX_OK) {
+                for (size_t li = 0; li < c->n_layers; ++li) {
+                    flux_txn_t* t2 = NULL;
+                    if (flux_txn_begin_read(c->layers[li], &t2) != FLUX_OK) continue;
+                    flux_record_t base;
+                    if (flux_get(t2, &base_id, &base) == FLUX_OK && variant_active(c, &base)) {
+                        if (!out->kind && base.kind) out->kind = dup_str(base.kind);
+                        if (!out->ptype && base.ptype) out->ptype = dup_str(base.ptype);
+                        if (!out->path && base.path) out->path = dup_str(base.path);
+                        if (out->payload.len == 0 && base.payload.len) {
+                            uint8_t* p = (uint8_t*)malloc(base.payload.len);
+                            memcpy(p, base.payload.data, base.payload.len);
+                            out->payload.data = p;
+                            out->payload.len = base.payload.len;
+                        }
+                        for (uint32_t i = 0; i < base.meta_count; ++i) {
+                            const char* bk = base.meta[i].key ? base.meta[i].key : "";
+                            if (strcmp(bk, "flux_inherit") == 0 ||
+                                strcmp(bk, "flux_variant") == 0 ||
+                                strcmp(bk, "flux_variant_set") == 0)
+                                continue;
+                            meta_set(out, bk, base.meta[i].val ? base.meta[i].val : "");
+                        }
+                        for (uint32_t i = 0; i < base.link_count; ++i)
+                            link_add(out, &base.links[i]);
+                        flux_record_free(&base);
+                        flux_txn_rollback(t2);
+                        break; /* strongest base version */
+                    }
+                    flux_txn_rollback(t2);
+                }
+            }
+        }
+    }
+
     return have ? FLUX_OK : FLUX_ERR_NOTFOUND;
 }
 
