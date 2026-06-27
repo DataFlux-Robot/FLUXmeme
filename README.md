@@ -166,6 +166,79 @@ with Store("robot.flux", writable=True) as s:
         s.to_okf(txn, "okf_out/")
 ```
 
+## Integration with simulation platforms
+
+FLUXmeme is designed as the **single source** behind your simulation stack —
+one `.flux` projects to whatever format each engine consumes. Install once,
+feed every tool:
+
+```bash
+pip install git+https://github.com/DataFlux-Robot/FLUXmeme.git
+```
+
+### [Isaac Lab](https://github.com/isaac-sim/IsaacLab) (NVIDIA)
+
+Isaac Lab reads USD scenes and trains VLA policies. With FLUXmeme:
+
+```python
+from fluxmeme import Store
+
+with Store("robot.flux") as s, s.read() as txn:
+    s.to_usd(txn, "scene.usda")      # BODY -> USD stage for Isaac Sim
+    s.to_okf(txn, "knowledge/")      # MIND -> task docs for VLA prompting
+    s.to_mcap(txn, "telemetry.mcap") # JOURNAL -> MCAP for replay/debug
+```
+
+One `.flux` feeds the **scene** (USD), the **task specification** (OKF
+markdown that an LLM reads for zero-shot policy), and the **telemetry log**
+(MCAP for post-hoc analysis) — all from the same artifact. No more
+maintaining three files that drift apart between sim runs.
+
+### [Newton](https://github.com/newton-physics/newton) (GPU physics)
+
+Newton solves contact-rich dynamics on GPU. FLUXmeme provides the **robot
+description** it needs:
+
+```python
+from fluxmeme import Store
+
+with Store("robot.flux") as s, s.read() as txn:
+    s.to_usd(txn, "robot.usda")  # Newton loads the USD mesh + physics params
+    # closed-loop kinematics (4-bar / Delta / Stewart) travel in the BODY
+    # layer's graph — richer than URDF's tree, directly usable by constraint solvers
+```
+
+The BODY layer's graph-based kinematics (with closed loops, joint limits, axis
+vectors) and device-comm topology map directly to Newton's constraint model —
+no URDF-to-Newton adapter middleware needed.
+
+### [UnitPort](https://github.com/DrLavier/UnitPort) and other frameworks
+
+Any Python-based robotics framework can `pip install fluxmeme` and immediately
+read/write DevReady assets. The `.flux` format's **projection model** means
+your framework consumes the standard it already speaks (USD, OKF, A2A, MCAP,
+MAVLink) — FLUXmeme is the upstream single source, your tools are downstream
+consumers. Zero lock-in: `flux transcode` exports to any format at any time.
+
+```python
+# universal pattern: load a .flux, project to what your stack needs
+with Store("robot.flux") as s, s.read() as txn:
+    s.to_usd(txn, "for_sim.usda")       # sim engines
+    s.to_okf(txn, "for_agent/")         # LLM / VLA
+    s.to_a2a(txn, "for_orchestration/") # multi-agent
+    s.to_mcap(txn, "for_replay.mcap")   # logging
+    s.to_mavlink(txn, "for_bus.frames") # edge transport
+```
+
+### Why not just use sidecar files?
+
+| Sidecar files (today) | `.flux` (DevReady) |
+|---|---|
+| Edit USD → forget to update URDF → sim breaks | one source; all projections stay in sync |
+| Knowledge lives in a wiki nobody reads after v1 | knowledge is IN the asset (MIND layer) |
+| Telemetry in MCAP, disconnected from the robot model | journal is part of the same file |
+| Onboarding a new team member = "find the 7 files" | `flux inspect robot.flux` |
+
 ## Architecture (three tiers)
 
 ```
