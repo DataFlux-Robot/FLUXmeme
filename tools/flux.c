@@ -93,8 +93,32 @@ static int cmd_transcode(const char* path, const char* fmt, const char* out) {
     return st == FLUX_OK ? 0 : 1;
 }
 
+/* SimReady -> DevReady: ingest a SimReady asset (USDA) into a fresh .flux,
+ * turning a scene-only USD asset into a FLUXmeme embodied-node store. */
+static int cmd_simready(const char* usda, const char* out_flux) {
+    flux_store_t* s = NULL;
+    if (flux_open(out_flux, 1, &s) != FLUX_OK) { printf("error: %s\n", flux_last_error()); return 1; }
+    flux_txn_t* t = NULL;
+    flux_txn_begin_write(s, &t);
+    flux_status_t st = flux_from_usd(usda, t);
+    flux_txn_commit(t);
+    if (st != FLUX_OK) { printf("error: %s\n", flux_last_error()); flux_close(s); return 1; }
+    /* report live record count */
+    flux_txn_t* r = NULL;
+    flux_txn_begin_read(s, &r);
+    flux_iter_t* it = NULL;
+    flux_scan(r, NULL, &it);
+    int n = 0;
+    flux_record_t rec;
+    while (flux_iter_next(it, &rec) == FLUX_OK) { n++; flux_record_free(&rec); }
+    flux_iter_free(it);
+    flux_txn_rollback(r);
+    printf("SimReady -> DevReady: %s -> %s (%d records)\n", usda, out_flux, n);
+    flux_close(s);
+    return 0;
+}
+
 static int cmd_compose(int argc, char** argv) {
-    /* argv[2]=root; remaining --variant S=V args */
     const char* root = argv[2];
     flux_compose_t* c = NULL;
     if (flux_compose_open(root, &c) != FLUX_OK) {
@@ -137,11 +161,13 @@ int main(int argc, char** argv) {
         printf("  flux transcode <file> <okf|a2a|usd> <out>\n");
         printf("  flux conv <in> <out>   # .flux <-> .fluxa (by extension)\n");
         printf("  flux compose <root> [--variant S=V]...  # LIVRPS merged view\n");
+        printf("  flux from-simready <usda> <out.flux>    # SimReady -> DevReady\n");
         return 1;
     }
     if (strcmp(argv[1], "inspect") == 0) return cmd_inspect(argv[2]);
     if (strcmp(argv[1], "dump") == 0) return cmd_dump(argv[2]);
     if (strcmp(argv[1], "compose") == 0) return cmd_compose(argc, argv);
+    if (strcmp(argv[1], "from-simready") == 0 && argc >= 4) return cmd_simready(argv[2], argv[3]);
     if (strcmp(argv[1], "transcode") == 0 && argc >= 5) return cmd_transcode(argv[2], argv[3], argv[4]);
     if (strcmp(argv[1], "conv") == 0 && argc >= 4) {
         const char* in = argv[2];
