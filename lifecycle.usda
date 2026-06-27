@@ -1,0 +1,7 @@
+#usda 1.0
+def Xform "Body"
+{
+    def Scope "robot/link_019f06ac16283622d96feb6df949edf6" {}
+    def Scope "robot/link_019f06ac1628f3e4c6ae3deb43c1abf3" {}
+    def Scope "robot/joint_019f06ac16287880920b049e2e9496a0" {}
+}

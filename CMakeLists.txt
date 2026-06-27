@@ -100,6 +100,8 @@ add_executable(demo_livrps demo/demo_livrps.c)
 target_link_libraries(demo_livrps PRIVATE fluxmeme)
 add_executable(demo_urdf demo/demo_urdf.c)
 target_link_libraries(demo_urdf PRIVATE fluxmeme)
+add_executable(demo_lifecycle demo/demo_lifecycle.c)
+target_link_libraries(demo_lifecycle PRIVATE fluxmeme)
 
 # robot-graph facet (BODY kinematics: closed-loop cycle detection)
 # device-comm facet (BODY device/bus topology + protocol routing)
