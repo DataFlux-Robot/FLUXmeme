@@ -1,8 +1,10 @@
 /* flux — CLI for the self-describing FLUXmeme format.
  *   flux inspect <file>                      identify + stats
  *   flux dump <file>                         list records (id/layer/kind/path)
- *   flux transcode <file> <okf|a2a|usd> <out>  project the composed view */
+ *   flux transcode <file> <okf|a2a|usd> <out>  project the composed view
+ *   flux compose <root> [--variant S=V]...   resolve the LIVRPS merged view */
 #include "fluxmeme/fluxmeme.h"
+#include "compose.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -91,6 +93,41 @@ static int cmd_transcode(const char* path, const char* fmt, const char* out) {
     return st == FLUX_OK ? 0 : 1;
 }
 
+static int cmd_compose(int argc, char** argv) {
+    /* argv[2]=root; remaining --variant S=V args */
+    const char* root = argv[2];
+    flux_compose_t* c = NULL;
+    if (flux_compose_open(root, &c) != FLUX_OK) {
+        printf("error: %s\n", flux_last_error());
+        return 1;
+    }
+    printf("layers: %zu\n", flux_compose_n_layers(c));
+    for (int i = 3; i < argc; ++i) {
+        if (strncmp(argv[i], "--variant=", 10) == 0) {
+            char buf[80];
+            snprintf(buf, sizeof(buf), "%s", argv[i] + 10);
+            char* eq = strchr(buf, '=');
+            if (eq) { *eq = '\0'; flux_compose_set_variant(c, buf, eq + 1); }
+        }
+    }
+    flux_compose_iter_t* it = NULL;
+    if (flux_compose_scan(c, NULL, &it) != FLUX_OK) { flux_compose_close(c); return 1; }
+    flux_record_t r;
+    int n = 0;
+    while (flux_compose_iter_next(it, &r) == FLUX_OK) {
+        char hex[33];
+        flux_id_to_hex(&r.id, hex);
+        printf("%s  %-7s %-12s %s\n", hex, layer_name(r.layer),
+               r.kind ? r.kind : "", r.path ? r.path : "");
+        flux_record_free(&r);
+        n++;
+    }
+    flux_compose_iter_free(it);
+    flux_compose_close(c);
+    printf("(%d merged records)\n", n);
+    return 0;
+}
+
 int main(int argc, char** argv) {
     if (argc < 3) {
         printf("flux v%s — FLUXmeme CLI\n", fluxmeme_version());
@@ -99,10 +136,12 @@ int main(int argc, char** argv) {
         printf("  flux dump <file>\n");
         printf("  flux transcode <file> <okf|a2a|usd> <out>\n");
         printf("  flux conv <in> <out>   # .flux <-> .fluxa (by extension)\n");
+        printf("  flux compose <root> [--variant S=V]...  # LIVRPS merged view\n");
         return 1;
     }
     if (strcmp(argv[1], "inspect") == 0) return cmd_inspect(argv[2]);
     if (strcmp(argv[1], "dump") == 0) return cmd_dump(argv[2]);
+    if (strcmp(argv[1], "compose") == 0) return cmd_compose(argc, argv);
     if (strcmp(argv[1], "transcode") == 0 && argc >= 5) return cmd_transcode(argv[2], argv[3], argv[4]);
     if (strcmp(argv[1], "conv") == 0 && argc >= 4) {
         const char* in = argv[2];

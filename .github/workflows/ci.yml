@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-test:
+    name: build & test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure (Windows, VS generator)
+        if: runner.os == 'Windows'
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+
+      - name: Configure (Linux, Makefiles)
+        if: runner.os == 'Linux'
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Run tests & demos
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then BIN="build/bin/Release"; EXE=".exe"; else BIN="build/bin"; EXE=""; fi
+          fail=0
+          for t in test_crc32c test_record_codec test_store_mvcc test_compact; do
+            "$BIN/$t$EXE" || { echo "FAIL $t"; fail=1; }
+          done
+          for d in demo_okf demo_a2a demo_usd demo_conv demo_robot demo_device demo_mavlink demo_compose demo_livrps demo_urdf; do
+            (cd "$BIN" && "./$d$EXE") >/dev/null 2>&1 || { echo "FAIL $d"; fail=1; }
+          done
+          [ $fail -eq 0 ] && echo "ALL GREEN"
+          exit $fail

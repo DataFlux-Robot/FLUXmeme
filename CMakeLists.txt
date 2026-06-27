@@ -44,6 +44,7 @@ set(FLUX_TRANSCODE
     src/transcode/usd/stl.c            # binary STL codec
     src/transcode/mavlink/mavlink.c    # MAVLink v2 frame codec (JOURNAL/signal)
     src/transcode/robotdesc/robotdesc.c # URDF/SDF import -> robot-graph
+    src/transcode/registry.c            # transcoder registry (extension point)
 )
 set(FLUX_CODEC
     src/codec/conv.c                   # .fluxa <-> .flux

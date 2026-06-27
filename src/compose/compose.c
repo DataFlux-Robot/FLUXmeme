@@ -169,18 +169,19 @@ static flux_status_t compose_resolve(flux_compose_t* c, const flux_id_t* id, flu
         if (flux_txn_begin_read(c->layers[li], &t) != FLUX_OK) continue;
         flux_record_t r;
         if (flux_get(t, id, &r) == FLUX_OK && variant_active(c, &r)) {
+            int first = !have;
             have = 1;
             /* scalar fields: strongest non-empty wins */
             if (!out->kind && r.kind) out->kind = dup_str(r.kind);
             if (!out->ptype && r.ptype) out->ptype = dup_str(r.ptype);
             if (!out->path && r.path) out->path = dup_str(r.path);
-            if (!have || li == 0) {
+            if (first) {
                 /* layer/pclass/clock/ts/ver from the strongest active version */
-                if (out->pclass == 0) out->pclass = r.pclass;
-                if (out->layer == 0) out->layer = r.layer;
-                if (out->clock == 0) out->clock = r.clock;
-                if (out->ts == 0) out->ts = r.ts;
-                if (out->ver == 0) out->ver = r.ver;
+                out->pclass = r.pclass;
+                out->layer = r.layer;
+                out->clock = r.clock;
+                out->ts = r.ts;
+                out->ver = r.ver;
             }
             /* payload: strongest non-empty */
             if (out->payload.len == 0 && r.payload.len) {
