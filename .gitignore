@@ -60,3 +60,7 @@ build_dll/
 *.urdf
 *.sdf
 lifecycle_okf/
+
+# keep demo assets
+!demo/assets/
+!demo/assets/*
