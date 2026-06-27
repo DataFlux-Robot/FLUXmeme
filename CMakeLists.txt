@@ -32,6 +32,7 @@ set(FLUX_CORE
     src/core/txn.c           # read snapshot / write serialize / commit
     src/core/iter.c          # scan + filter iterator
     src/core/cursor.c        # FIFO cursors
+    src/core/compact.c       # flux_compact (reclaim append growth)
     src/port/port_file.c     # portable file backend (stdio/Win32 + flock/LockFileEx)
 )
 set(FLUX_TRANSCODE
@@ -75,6 +76,7 @@ endfunction()
 flux_test(test_crc32c)
 flux_test(test_record_codec)
 flux_test(test_store_mvcc)
+flux_test(test_compact)
 
 # Demos
 add_executable(demo_okf demo/demo_okf.c)

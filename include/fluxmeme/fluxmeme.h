@@ -31,6 +31,10 @@ void flux_close(flux_store_t* store);
 /* Current visible commit_seq (MVCC version). */
 uint64_t flux_commit_seq(const flux_store_t* store);
 
+/* Reclaim append-only growth: rewrite `path` keeping only the live records
+ * (drops tombstones, superseded versions, and any torn tail). Atomic rename. */
+flux_status_t flux_compact(const char* path);
+
 /* --- Transactions --------------------------------------------------------- */
 typedef struct flux_txn flux_txn_t;
 

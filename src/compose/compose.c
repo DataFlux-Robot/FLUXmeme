@@ -4,6 +4,7 @@
 #include <string.h>
 
 #define FLUX_MAX_VARIANTS 8
+#define FLUX_MAX_COMP_LAYERS 64 /* DoS/cycle bound on the layer stack (SPEC §8) */
 
 struct flux_compose {
     flux_store_t** layers; /* [0]=root, then sublayers strongest-first */
@@ -82,6 +83,7 @@ flux_status_t flux_compose_open(const char* root_path, flux_compose_t** out) {
     if (list) {
         char* tok = strtok(list, ";");
         while (tok) {
+            if (c->n_layers >= FLUX_MAX_COMP_LAYERS) break;
             while (*tok == ' ') tok++;
             char* full = join(c->root_dir, tok);
             flux_store_t* lay = NULL;

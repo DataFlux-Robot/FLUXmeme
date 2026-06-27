@@ -13,6 +13,13 @@
 #define FLUX_FMT_VERSION 1u
 #define FLUX_HEADER_SIZE 64
 
+/* untrusted-input hardening caps (SPEC §8) */
+#define FLUX_MAX_PAYLOAD  (1u << 28)   /* 256 MiB per record payload            */
+#define FLUX_MAX_META     4096u        /* KV pairs per record                   */
+#define FLUX_MAX_LINKS    4096u        /* edges per record                      */
+#define FLUX_MAX_RECORDS  (1u << 24)   /* 16M entries cap on open (DoS bound)   */
+#define FLUX_MAX_LAYERS   64           /* composition layer-stack depth (cycle) */
+
 /* ---- error helper ---- */
 void flux_set_error(const char* fmt, ...);
 

@@ -137,6 +137,10 @@ static flux_status_t recover(flux_store_t* s) {
             uint64_t seq = get_u64le(cb + 4);
             /* promote pending to committed entries */
             for (size_t i = 0; i < n_pending; ++i) {
+                if (s->n_entries >= FLUX_MAX_RECORDS) { /* DoS bound (SPEC §8) */
+                    n_pending = 0;
+                    goto recover_done;
+                }
                 if (s->n_entries == s->cap_entries) {
                     s->cap_entries = s->cap_entries ? s->cap_entries * 2 : 64;
                     s->entries = realloc(s->entries, s->cap_entries * sizeof(flux_entry_t));
@@ -152,6 +156,7 @@ static flux_status_t recover(flux_store_t* s) {
             break; /* unknown -> stop */
         }
     }
+recover_done:
     free(pending);
     s->commit_seq = best_seq;
     /* writable: truncate uncommitted tail */

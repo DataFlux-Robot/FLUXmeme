@@ -142,6 +142,7 @@ flux_status_t flux_record_decode(const uint8_t* body, size_t len, flux_record_t*
 
     if (off + 2 > len) goto corrupt;
     uint16_t mc = get_u16le(body + off); off += 2;
+    if (mc > FLUX_MAX_META) goto corrupt;
     out->meta_count = mc;
     flux_meta_kv_t* marr = NULL;
     if (mc) {
@@ -159,6 +160,7 @@ flux_status_t flux_record_decode(const uint8_t* body, size_t len, flux_record_t*
 
     if (off + 2 > len) goto corrupt;
     uint16_t lc = get_u16le(body + off); off += 2;
+    if (lc > FLUX_MAX_LINKS) goto corrupt;
     out->link_count = lc;
     flux_link_t* larr = NULL;
     if (lc) {
@@ -176,6 +178,7 @@ flux_status_t flux_record_decode(const uint8_t* body, size_t len, flux_record_t*
 
     if (off + 4 > len) goto corrupt;
     uint32_t plen = get_u32le(body + off); off += 4;
+    if (plen > FLUX_MAX_PAYLOAD) goto corrupt;
     if (off + plen > len) goto corrupt;
     if (plen) {
         uint8_t* pd = (uint8_t*)malloc(plen);
