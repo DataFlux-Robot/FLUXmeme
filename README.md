@@ -405,9 +405,140 @@ NVIDIA 的 **SimReady** 让 3D 资产**物理准确**——一个 mesh 带着实
 - **工具**:`flux` CLI(inspect/dump/transcode/conv/compose/from-simready)、Python 绑定(已验证,ctypes)。
 - **工程基线**:不可信输入硬化 caps、CI 矩阵(Win MSVC + Linux gcc)、治理(CONTRIBUTING/COC/RFC/SECURITY)。
 
-## 快速开始
+## 安装
 
-见上方 **Installation**(英文段)——支持 `pip install`(推荐,自动编译 C 库)和 CMake 源码构建两种方式;Windows / Linux / macOS 命令相同;C 与 Python 示例亦通用。
+### Python(推荐,仿真/agent 集成)
+
+```bash
+pip install git+https://github.com/DataFlux-Robot/FLUXmeme.git
+```
+
+scikit-build-core 自动编译 C 库并打包进 wheel。无需手动 CMake、无需单独 DLL。
+Windows(MSVC)、Linux(gcc)、macOS(clang)均支持。
+
+> **Windows:** 如果 `pip install` 找不到编译器,在 **VS 2022 Developer 提示符**里跑。
+
+### 快速 demo:USD <-> .flux + Newton 集成
+
+```bash
+python demo/demo_newton.py              # USD -> .flux -> USD 往返 + 优势展示
+python demo/demo_newton.py --newton     # 同时跑 Newton 仿真(需安装)
+```
+
+```
+1. USD -> .flux  (导入 SimReady/Newton 资产)
+   [OK] 导入 2 条 BODY 记录(mesh)from cartpole.usda
+   [OK] 添加 2 条 MIND 记录(任务概念 + agent 卡)
+   -> USD 只有 2 个 mesh;.flux 有 BODY + MIND
+
+2. .flux -> USD  (BODY 投影回;往返)
+   [OK] 导出 BODY -> cartpole_from_flux.usda
+   [OK] .flux 含:2 BODY + 2 MIND
+   [OK] 导出 .fluxa(文本 canonical 源,3405 字节)
+
+3. .flux 文件优势(vs 纯 USD)
+   BODY    : 2 条记录
+   MIND    : 2 条记录
+   USD  (cartpole.usda):      2186 字节 -- 仅场景
+   .flux(cartpole.flux):      2156 字节 -- 场景 + 知识 + 日志
+   .fluxa(cartpole.fluxa):    3405 字节 -- 人可读、可 diff
+
+4. Newton(跳过 -- 用 --newton 启用)
+   pip install newton-physics warp-lang
+   python demo/demo_newton.py --newton
+   python -m newton.examples robot_g1
+```
+
+与 [Newton](https://github.com/newton-physics/newton)、[Isaac Lab](https://github.com/isaac-sim/IsaacLab)、
+[UnitPort](https://github.com/DrLavier/UnitPort) 等仿真框架集成的完整 Python API:
+
+```python
+from fluxmeme import Store, Record, LAYER_BODY, LAYER_MIND, LAYER_JOURNAL
+
+with Store("robot.flux", writable=True) as s:
+    # USD -> .flux(导入 SimReady/Newton 资产)
+    with s.write() as txn:
+        s.from_usd(txn, "cartpole.usda")
+    # .flux 优势:添加 USD 无法承载的知识
+    with s.write() as txn:
+        s.put(txn, Record(layer=LAYER_MIND, kind="concept",
+                          meta={"title": "平衡杆任务"},
+                          payload=b"# 小车平衡杆:保持杆竖直"))
+
+with Store("robot.flux") as s, s.read() as txn:
+    s.to_usd(txn, "for_newton.usda")       # BODY -> USD(Newton/Isaac Sim)
+    s.to_okf(txn, "for_agent/")            # MIND -> OKF(VLA 任务提示)
+    s.to_mcap(txn, "for_replay.mcap")      # JOURNAL -> MCAP(rosbag2 回放)
+    s.to_mavlink(txn, "for_edge.frames")   # JOURNAL -> MAVLink(MCU 传输)
+    body = list(s.scan(txn, layer=LAYER_BODY))
+    mind = list(s.scan(txn, layer=LAYER_MIND))
+    print(f".flux: {len(body)} BODY + {len(mind)} MIND(USD 单独:仅 {len(body)})")
+```
+
+### 源码构建(C 库 + CLI + demo)
+
+```bat
+:: Windows(VS 2022 Developer 提示符,或 VS 自带 CMake):
+cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+cmake --build build --config Release
+build\bin\Release\demo_lifecycle.exe   :: 生成 -> 复用 -> 运维,一个 .flux
+```
+```bash
+# Linux / macOS
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build
+./build/bin/demo_lifecycle
+```
+
+## 与仿真平台集成
+
+FLUXmeme 是仿真栈背后的**单一源**——一个 `.flux` 按需投影到各引擎消费的格式:
+
+### [Isaac Lab](https://github.com/isaac-sim/IsaacLab)(NVIDIA)
+
+Isaac Lab 读 USD 场景、训练 VLA 策略。用 FLUXmeme:
+
+```python
+from fluxmeme import Store
+
+with Store("robot.flux") as s, s.read() as txn:
+    s.to_usd(txn, "scene.usda")      # BODY -> USD(Isaac Sim 场景)
+    s.to_okf(txn, "knowledge/")      # MIND -> 任务文档(LLM zero-shot 策略提示)
+    s.to_mcap(txn, "telemetry.mcap") # JOURNAL -> MCAP(回放/调试)
+```
+
+一个 `.flux` 同时喂**场景**(USD)、**任务规格**(OKF markdown,LLM 直接读)、**遥测日志**(MCAP)——
+不再维护三个会在 sim run 之间漂移的文件。
+
+### [Newton](https://github.com/newton-physics/newton)(GPU 物理)
+
+Newton 在 GPU 上求解接触动力学。FLUXmeme 提供它需要的**机器人描述**:
+
+```python
+from fluxmeme import Store
+
+with Store("robot.flux") as s, s.read() as txn:
+    s.to_usd(txn, "robot.usda")  # Newton 加载 USD mesh + 物理参数
+    # 闭链运动学(四连杆/Delta/Stewart)在 BODY 层 graph 里——比 URDF 纯树更丰富,
+    # 约束求解器可直接用
+```
+
+BODY 层的 graph 运动学(含闭链、关节 limit、轴向量)和 device-comm 拓扑直接映射到
+Newton 的约束模型——无需 URDF-to-Newton 适配中间件。
+
+### [UnitPort](https://github.com/DrLavier/UnitPort) 等其他框架
+
+任何 Python 机器人框架都可以 `pip install fluxmeme` 直接读写 DevReady 资产。
+`.flux` 的**投影模型**意味着你的框架消费它已经说的标准(USD/OKF/A2A/MCAP/MAVLink)——
+FLUXmeme 是上游单一源,你的工具是下游消费者。零锁定:`flux transcode` 随时导出任意格式。
+
+### 为什么不直接用 sidecar 文件?
+
+| Sidecar 文件(现状) | `.flux`(DevReady) |
+|---|---|
+| 改了 USD 忘改 URDF -> sim 崩 | 单一源;所有投影自动同步 |
+| 知识在 wiki 里,v1 后没人看 | 知识在资产内(MIND 层) |
+| 遥测在 MCAP 里,与机器人模型脱节 | 日志是同一个文件的一部分 |
+| 新人入职 = "找那 7 个文件" | `flux inspect robot.flux` |
 
 ## 三层架构
 
