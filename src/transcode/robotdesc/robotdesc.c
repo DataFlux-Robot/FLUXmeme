@@ -125,13 +125,12 @@ static flux_status_t import_xml(const char* in_path, flux_txn_t* txn) {
         p = tc + 1;
     }
 
-    /* pass 2: joints */
+    /* pass 2: joints (with dynamics: limit + axis extracted into meta) */
     p = src;
     while ((p = find_open_tag(p, "joint")) != NULL) {
         const char* tc = tag_close(p);
         if (!tc) break;
-        char jname[64], jtype[32] = {0};
-        get_attr(p, tc, "name", jname, sizeof(jname));
+        char jtype[32] = {0};
         get_attr(p, tc, "type", jtype, sizeof(jtype));
         const char* jend = strstr(p, "</joint>");
         if (!jend) jend = src + total;
@@ -142,7 +141,51 @@ static flux_status_t import_xml(const char* in_path, flux_txn_t* txn) {
         if (ct && ct < jend) { const char* ctc = tag_close(ct); if (ctc) get_attr(ct, ctc, "link", cname, sizeof(cname)); }
         flux_id_t* par = map_get(map, nmap, pname);
         flux_id_t* chd = map_get(map, nmap, cname);
-        if (par && chd) put_joint(txn, jtype, par, chd);
+        if (!par || !chd) { p = jend + 1; continue; }
+
+        /* dynamics: extract <limit lower/upper/effort/velocity> + <axis xyz> */
+        flux_meta_kv_t jm[6];
+        int jn = 0;
+        jm[jn].key = "type"; jm[jn].val = (jtype[0] ? jtype : "fixed"); jn++;
+        char lo[32]={0}, hi[32]={0}, eff[32]={0}, vel[32]={0}, ax[64]={0};
+        const char* lt = find_open_tag(p, "limit");
+        if (lt && lt < jend) {
+            const char* ltc = tag_close(lt);
+            if (ltc) {
+                get_attr(lt, ltc, "lower", lo, sizeof(lo));
+                get_attr(lt, ltc, "upper", hi, sizeof(hi));
+                get_attr(lt, ltc, "effort", eff, sizeof(eff));
+                get_attr(lt, ltc, "velocity", vel, sizeof(vel));
+            }
+        }
+        const char* at = find_open_tag(p, "axis");
+        if (at && at < jend) {
+            const char* atc = tag_close(at);
+            if (atc) get_attr(at, atc, "xyz", ax, sizeof(ax));
+        }
+        if (lo[0]) { jm[jn].key="lower"; jm[jn].val=lo; jn++; }
+        if (hi[0]) { jm[jn].key="upper"; jm[jn].val=hi; jn++; }
+        if (eff[0]) { jm[jn].key="effort"; jm[jn].val=eff; jn++; }
+        if (vel[0]) { jm[jn].key="velocity"; jm[jn].val=vel; jn++; }
+        if (ax[0]) { jm[jn].key="axis"; jm[jn].val=ax; jn++; }
+
+        /* build the joint record with parent/child + dynamics meta */
+        static const char* rp = "parent";
+        static const char* rc = "child";
+        flux_link_t lk[2];
+        memset(lk, 0, sizeof(lk));
+        memcpy(lk[0].target.bytes, par->bytes, 16); lk[0].rel = rp;
+        memcpy(lk[1].target.bytes, chd->bytes, 16); lk[1].rel = rc;
+        flux_record_t r;
+        memset(&r, 0, sizeof(r));
+        r.layer = FLUX_LAYER_BODY;
+        r.kind = "robot/joint";
+        r.meta = jm;
+        r.meta_count = (uint32_t)jn;
+        r.links = lk;
+        r.link_count = 2;
+        r.ts = (uint64_t)time(NULL) * 1000ULL;
+        flux_put(txn, &r);
         p = jend + 1;
     }
 
