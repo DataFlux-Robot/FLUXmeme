@@ -1,0 +1,68 @@
+<?xml version="1.0"?>
+<!-- Minimal quadruped URDF for FLUXmeme demo (4 legs, each 2 segments).
+     Import with: Store.from_urdf(txn, "quadruped.urdf") -->
+<robot name="quadruped">
+  <!-- torso -->
+  <link name="base">
+    <inertial>
+      <mass value="5.0"/>
+      <inertia ixx="0.1" ixy="0" ixz="0" iyy="0.1" iyz="0" izz="0.1"/>
+    </inertial>
+  </link>
+
+  <!-- leg FL (front-left) -->
+  <link name="fl_upper"/>
+  <link name="fl_lower"/>
+  <joint name="fl_hip" type="revolute">
+    <parent link="base"/><child link="fl_upper"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1.57" upper="1.57" effort="5" velocity="2"/>
+  </joint>
+  <joint name="fl_knee" type="revolute">
+    <parent link="fl_upper"/><child link="fl_lower"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-2.5" upper="0" effort="5" velocity="2"/>
+  </joint>
+
+  <!-- leg FR (front-right) -->
+  <link name="fr_upper"/>
+  <link name="fr_lower"/>
+  <joint name="fr_hip" type="revolute">
+    <parent link="base"/><child link="fr_upper"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1.57" upper="1.57" effort="5" velocity="2"/>
+  </joint>
+  <joint name="fr_knee" type="revolute">
+    <parent link="fr_upper"/><child link="fr_lower"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-2.5" upper="0" effort="5" velocity="2"/>
+  </joint>
+
+  <!-- leg BL (back-left) -->
+  <link name="bl_upper"/>
+  <link name="bl_lower"/>
+  <joint name="bl_hip" type="revolute">
+    <parent link="base"/><child link="bl_upper"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1.57" upper="1.57" effort="5" velocity="2"/>
+  </joint>
+  <joint name="bl_knee" type="revolute">
+    <parent link="bl_upper"/><child link="bl_lower"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-2.5" upper="0" effort="5" velocity="2"/>
+  </joint>
+
+  <!-- leg BR (back-right) -->
+  <link name="br_upper"/>
+  <link name="br_lower"/>
+  <joint name="br_hip" type="revolute">
+    <parent link="base"/><child link="br_upper"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1.57" upper="1.57" effort="5" velocity="2"/>
+  </joint>
+  <joint name="br_knee" type="revolute">
+    <parent link="br_upper"/><child link="br_lower"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-2.5" upper="0" effort="5" velocity="2"/>
+  </joint>
+</robot>

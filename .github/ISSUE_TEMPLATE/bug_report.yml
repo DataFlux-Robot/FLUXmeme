@@ -1,0 +1,54 @@
+name: Bug report
+description: Report a bug in FLUXmeme
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug! Please fill in the details below.
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened? What did you expect?
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Windows (MSVC)
+        - Linux (gcc)
+        - Linux (clang)
+        - macOS
+        - Embedded (STM32/ESP32)
+    validations:
+      required: true
+  - type: dropdown
+    id: api
+    attributes:
+      label: API
+      options:
+        - Python (ctypes)
+        - C
+        - CLI (flux)
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: Minimal code or commands to reproduce.
+      placeholder: |
+        ```python
+        from fluxmeme import Store
+        ...
+        ```
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: FLUXmeme version
+      placeholder: "0.1.0"
