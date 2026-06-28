@@ -4,6 +4,7 @@
  * Selecting a variant changes mass; color survives from base (field merge).
  * base.flux is never modified (non-destructive). */
 #include "fluxmeme/fluxmeme.h"
+#include "../src/core/ref_utils.h"
 #include "../src/compose/compose.h"
 #include <stdio.h>
 #include <string.h>
@@ -29,11 +30,11 @@ static void put_layer(const char* path, const char* mass, const char* color,
     flux_txn_begin_write(s, &w);
     flux_meta_kv_t m[5];
     int n = 0;
-    m[n].key = "name"; m[n].val = "base"; n++;
-    m[n].key = "mass"; m[n].val = mass; n++;
-    if (color) { m[n].key = "color"; m[n].val = color; n++; }
-    if (set) { m[n].key = "flux_variant_set"; m[n].val = set; n++; }
-    if (variant) { m[n].key = "flux_variant"; m[n].val = variant; n++; }
+    m[n].key = "name"; m[n].val = "base"; m[n].type = FLUX_META_STRING; n++;
+    m[n].key = "mass"; m[n].val = mass;  m[n].type = FLUX_META_STRING; n++;
+    if (color)   { m[n].key = "color"; m[n].val = color; m[n].type = FLUX_META_STRING; n++; }
+    if (set)     { m[n].key = "flux_variant_set"; m[n].val = set; m[n].type = FLUX_META_STRING; n++; }
+    if (variant) { m[n].key = "flux_variant"; m[n].val = variant; m[n].type = FLUX_META_STRING; n++; }
     flux_record_t r;
     memset(&r, 0, sizeof(r));
     memcpy(r.id.bytes, FIXED_ID, 16);
@@ -90,6 +91,7 @@ int main(void) {
     flux_meta_kv_t m;
     m.key = "sublayers";
     m.val = "livrps_heavy.flux;livrps_light.flux;livrps_base.flux";
+    m.type = FLUX_META_STRING;
     flux_record_t mr;
     memset(&mr, 0, sizeof(mr));
     mr.layer = FLUX_LAYER_MIND;

@@ -3,6 +3,7 @@
  * root.flux declares sublayers="override.flux;base.flux" (override stronger).
  * compose_open resolves the merged view (mass=20) while base.flux is untouched. */
 #include "fluxmeme/fluxmeme.h"
+#include "../src/core/ref_utils.h"
 #include "../src/compose/compose.h"
 #include <stdio.h>
 #include <string.h>
@@ -24,8 +25,8 @@ static void put_link(const char* path, const char* mass) {
     flux_txn_t* w = NULL;
     flux_txn_begin_write(s, &w);
     flux_meta_kv_t m[2];
-    m[0].key = "name"; m[0].val = "base";
-    m[1].key = "mass"; m[1].val = mass;
+    m[0].key = "name"; m[0].val = "base"; m[0].type = FLUX_META_STRING;
+    m[1].key = "mass"; m[1].val = mass;   m[1].type = FLUX_META_STRING;
     flux_record_t r;
     memset(&r, 0, sizeof(r));
     memcpy(r.id.bytes, FIXED_ID, 16);
@@ -68,6 +69,7 @@ int main(void) {
     flux_meta_kv_t m;
     m.key = "sublayers";
     m.val = "comp_override.flux;comp_base.flux"; /* override first = stronger */
+    m.type = FLUX_META_STRING;
     flux_record_t mr;
     memset(&mr, 0, sizeof(mr));
     mr.layer = FLUX_LAYER_MIND;

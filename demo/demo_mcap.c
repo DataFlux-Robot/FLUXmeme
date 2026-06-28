@@ -2,6 +2,7 @@
  * Writes 2 signal records, projects to a .mcap, re-ingests, asserts the
  * signals survive (name + value). Validates the journal's primary projection. */
 #include "fluxmeme/fluxmeme.h"
+#include "../src/core/ref_utils.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -15,8 +16,8 @@
 
 static void add_signal(flux_txn_t* w, const char* name, const char* value) {
     flux_meta_kv_t m[2];
-    m[0].key = "name";  m[0].val = name;
-    m[1].key = "value"; m[1].val = value;
+    m[0].key = "name";  m[0].val = name;  m[0].type = FLUX_META_STRING;
+    m[1].key = "value"; m[1].val = value; m[1].type = FLUX_META_STRING;
     flux_record_t r;
     memset(&r, 0, sizeof(r));
     r.layer = FLUX_LAYER_JOURNAL;

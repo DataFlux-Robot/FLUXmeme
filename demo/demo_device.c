@@ -2,6 +2,7 @@
  * Builds an RS485 bus with 2 motors + a MAVLink radio, loads the topology,
  * asserts structure and the per-protocol edge query the codec routes over. */
 #include "fluxmeme/fluxmeme.h"
+#include "../src/core/ref_utils.h"
 #include "../src/facets/device_comm.h"
 #include <stdio.h>
 #include <string.h>
@@ -16,11 +17,11 @@ static void add_node(flux_txn_t* w, flux_id_t* id_out, const char* name,
     char baudbuf[24];
     snprintf(baudbuf, sizeof baudbuf, "%llu", (unsigned long long)baud);
     flux_meta_kv_t m[5];
-    m[0].key = "name";     m[0].val = name;
-    m[1].key = "kind";     m[1].val = kind;
-    m[2].key = "protocol"; m[2].val = protocol;
-    m[3].key = "addr";     m[3].val = addr;
-    m[4].key = "baud";     m[4].val = baudbuf;
+    m[0].key = "name";     m[0].val = name;       m[0].type = FLUX_META_STRING;
+    m[1].key = "kind";     m[1].val = kind;       m[1].type = FLUX_META_STRING;
+    m[2].key = "protocol"; m[2].val = protocol;   m[2].type = FLUX_META_STRING;
+    m[3].key = "addr";     m[3].val = addr;       m[3].type = FLUX_META_STRING;
+    m[4].key = "baud";     m[4].val = baudbuf;    m[4].type = FLUX_META_STRING;
     flux_record_t r;
     memset(&r, 0, sizeof(r));
     r.layer = FLUX_LAYER_BODY;
@@ -33,19 +34,23 @@ static void add_node(flux_txn_t* w, flux_id_t* id_out, const char* name,
 
 static void add_edge(flux_txn_t* w, const char* protocol,
                      const flux_id_t* a, const flux_id_t* b) {
-    flux_link_t lk[2];
-    memset(lk, 0, sizeof(lk));
-    memcpy(lk[0].target.bytes, a->bytes, 16); lk[0].rel = "a";
-    memcpy(lk[1].target.bytes, b->bytes, 16); lk[1].rel = "b";
-    flux_meta_kv_t m = { "protocol", protocol };
+    /* endpoints a/b are REF-typed meta entries (keys "a"/"b") */
+    static char ahex[33], bhex[33];
+    static char aref[80], bref[80];
+    static flux_meta_kv_t em[3];
+    flux_id_to_hex(a, ahex);
+    flux_id_to_hex(b, bhex);
+    flux_ref_encode(aref, sizeof(aref), ahex, NULL);
+    flux_ref_encode(bref, sizeof(bref), bhex, NULL);
+    em[0].key = "protocol"; em[0].val = protocol; em[0].type = FLUX_META_STRING;
+    em[1].key = "a";        em[1].val = aref;     em[1].type = FLUX_META_REF;
+    em[2].key = "b";        em[2].val = bref;     em[2].type = FLUX_META_REF;
     flux_record_t r;
     memset(&r, 0, sizeof(r));
     r.layer = FLUX_LAYER_BODY;
     r.kind = "device-comm/edge";
-    r.meta = &m;
-    r.meta_count = 1;
-    r.links = lk;
-    r.link_count = 2;
+    r.meta = em;
+    r.meta_count = 3;
     flux_put(w, &r);
 }
 

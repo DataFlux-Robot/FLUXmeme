@@ -2,6 +2,7 @@
  * Writes an agent_card (name=fluxbot) + 2 tasks (part_of the card),
  * transcodes out to a2a_out/, re-ingests, asserts the round-trip. */
 #include "fluxmeme/fluxmeme.h"
+#include "../src/core/ref_utils.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -40,12 +41,14 @@ int main(void) {
         snprintf(buf, sizeof(buf), "{\"task\":\"t%d\"}", i + 1);
         t.payload.data = (const uint8_t*)buf;
         t.payload.len = strlen(buf);
-        flux_link_t link;
-        memset(&link, 0, sizeof(link));
-        memcpy(link.target.bytes, card.id.bytes, 16);
-        link.rel = "part_of";
-        t.links = &link;
-        t.link_count = 1;
+        /* link task -> card (part_of) as REF-typed meta */
+        static char hexbuf[33];
+        static char refbuf[80];
+        static flux_meta_kv_t tmeta[1];
+        flux_id_to_hex(&card.id, hexbuf);
+        flux_ref_encode(refbuf, sizeof(refbuf), hexbuf, NULL);
+        tmeta[0].key = "part_of"; tmeta[0].val = refbuf; tmeta[0].type = FLUX_META_REF;
+        t.meta = tmeta; t.meta_count = 1;
         CHECK(flux_put(w, &t) == FLUX_OK, "put task");
     }
     CHECK(flux_txn_commit(w) == FLUX_OK, "commit");
@@ -78,7 +81,7 @@ int main(void) {
                 n_card++;
         } else if (rec.kind && strcmp(rec.kind, "task") == 0) {
             n_task++;
-            if (rec.link_count >= 1) link_ok++;
+            if (flux_ref_count(&rec) >= 1) link_ok++;
         }
         flux_record_free(&rec);
     }

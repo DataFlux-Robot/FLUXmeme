@@ -4,7 +4,7 @@
  *   flux transcode <file> <okf|a2a|usd> <out>  project the composed view
  *   flux compose <root> [--variant S=V]...   resolve the LIVRPS merged view */
 #include "fluxmeme/fluxmeme.h"
-#include "compose.h"
+#include "../src/compose/compose.h"
 #include <stdio.h>
 #include <string.h>
 

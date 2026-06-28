@@ -2,6 +2,7 @@
  * Builds 3 MIND/concept records (A links to B), transcodes out to okf_out/,
  * re-ingests into a fresh store, and asserts the round-trip. */
 #include "fluxmeme/fluxmeme.h"
+#include "../src/core/ref_utils.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -22,9 +23,9 @@ static void make_concept(flux_record_t* r, flux_meta_kv_t meta[3],
     r->pclass = FLUX_PCLASS_TEXT;
     r->kind = "concept";
     r->ptype = "text/markdown";
-    meta[0].key = "type";  meta[0].val = "concept";
-    meta[1].key = "title"; meta[1].val = title;
-    meta[2].key = "tags";  meta[2].val = tags;
+    meta[0].key = "type";  meta[0].val = "concept";   meta[0].type = FLUX_META_STRING;
+    meta[1].key = "title"; meta[1].val = title;       meta[1].type = FLUX_META_STRING;
+    meta[2].key = "tags";  meta[2].val = tags;        meta[2].type = FLUX_META_STRING;
     r->meta = meta;
     r->meta_count = 3;
     r->payload.data = (const uint8_t*)body;
@@ -37,20 +38,19 @@ int main(void) {
     flux_txn_t* w = NULL;
     CHECK(flux_txn_begin_write(s, &w) == FLUX_OK, "begin write");
 
-    flux_meta_kv_t ma[3], mb[3], mc[3];
+    flux_meta_kv_t ma[4], mb[3], mc[3];
     flux_record_t a, b, c;
     make_concept(&a, ma, "A", "# A", "x,y");
     make_concept(&b, mb, "B", "# B", "x");
     make_concept(&c, mc, "C", "# C", "y");
     CHECK(flux_put(w, &a) == FLUX_OK, "put A");
     CHECK(flux_put(w, &b) == FLUX_OK, "put B");
-    /* link A -> B (references) */
-    flux_link_t link;
-    memset(&link, 0, sizeof(link));
-    memcpy(link.target.bytes, b.id.bytes, 16);
-    link.rel = "references";
-    a.link_count = 1;
-    a.links = &link;
+    /* link A -> B (references) as a REF-typed meta entry */
+    char a_hex[33]; char a_ref[80];
+    flux_id_to_hex(&b.id, a_hex);
+    flux_ref_encode(a_ref, sizeof(a_ref), a_hex, NULL);
+    ma[3].key = "references"; ma[3].val = a_ref; ma[3].type = FLUX_META_REF;
+    a.meta = ma; a.meta_count = 4;
     CHECK(flux_put(w, &a) == FLUX_OK, "put A (with link)");
     CHECK(flux_put(w, &c) == FLUX_OK, "put C");
     CHECK(flux_txn_commit(w) == FLUX_OK, "commit");
@@ -93,7 +93,7 @@ int main(void) {
             rec.payload.data[1] == ' ' &&
             rec.payload.data[2] >= 'A' && rec.payload.data[2] <= 'C')
             payloads_ok++;
-        if (rec.link_count >= 1) link_ok++;
+        if (flux_ref_count(&rec) >= 1) link_ok++;
         flux_record_free(&rec);
     }
     flux_iter_free(it);

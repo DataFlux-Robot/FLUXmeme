@@ -2,6 +2,7 @@
  * Builds records for links + joints, loads the graph, asserts cycle detection —
  * i.e. that closed loops (beyond URDF trees) are first-class. */
 #include "fluxmeme/fluxmeme.h"
+#include "../src/core/ref_utils.h"
 #include "../src/facets/robot_graph.h"
 #include <stdio.h>
 #include <string.h>
@@ -11,7 +12,7 @@
     do { if (!(cond)) { printf("FAIL: %s (%s)\n", msg, flux_last_error()); return 1; } } while (0)
 
 static void add_link(flux_txn_t* w, flux_id_t* id_out, const char* name) {
-    flux_meta_kv_t m = { "name", name };
+    flux_meta_kv_t m = { "name", name, FLUX_META_STRING };
     flux_record_t r;
     memset(&r, 0, sizeof(r));
     r.layer = FLUX_LAYER_BODY;
@@ -24,23 +25,23 @@ static void add_link(flux_txn_t* w, flux_id_t* id_out, const char* name) {
 
 static void add_joint(flux_txn_t* w, const char* type,
                       const flux_id_t* parent, const flux_id_t* child) {
-    static const char* rp = "parent";
-    static const char* rc = "child";
-    flux_link_t lk[2];
-    memset(lk, 0, sizeof(lk));
-    memcpy(lk[0].target.bytes, parent->bytes, 16);
-    lk[0].rel = rp;
-    memcpy(lk[1].target.bytes, child->bytes, 16);
-    lk[1].rel = rc;
-    flux_meta_kv_t m = { "type", type };
+    /* parent/child are REF-typed meta entries (keys "parent"/"child") */
+    static char phex[33], chex[33];
+    static char pref[80], cref[80];
+    static flux_meta_kv_t jm[3];
+    flux_id_to_hex(parent, phex);
+    flux_id_to_hex(child,  chex);
+    flux_ref_encode(pref, sizeof(pref), phex, NULL);
+    flux_ref_encode(cref, sizeof(cref), chex, NULL);
+    jm[0].key = "type";   jm[0].val = type; jm[0].type = FLUX_META_STRING;
+    jm[1].key = "parent"; jm[1].val = pref; jm[1].type = FLUX_META_REF;
+    jm[2].key = "child";  jm[2].val = cref; jm[2].type = FLUX_META_REF;
     flux_record_t r;
     memset(&r, 0, sizeof(r));
     r.layer = FLUX_LAYER_BODY;
     r.kind = "robot/joint";
-    r.meta = &m;
-    r.meta_count = 1;
-    r.links = lk;
-    r.link_count = 2;
+    r.meta = jm;
+    r.meta_count = 3;
     flux_put(w, &r);
 }
 

@@ -8,6 +8,7 @@
  * (The MCU on-device append is the v1.3 embedded piece; this runs the desktop
  *  half, asserting the single-artifact-through-lifecycle property.) */
 #include "fluxmeme/fluxmeme.h"
+#include "../src/core/ref_utils.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -44,31 +45,33 @@ int main(void) {
     CHECK(flux_txn_begin_write(s, &w) == FLUX_OK, "begin write");
 
     /* BODY: a tiny robot graph (2 links + 1 joint) */
-    flux_meta_kv_t ln = {"name", "base"};
+    flux_meta_kv_t ln = {"name", "base", FLUX_META_STRING};
     flux_record_t link = {0};
     link.layer = FLUX_LAYER_BODY; link.kind = "robot/link"; link.meta = &ln; link.meta_count = 1;
     CHECK(flux_put(w, &link) == FLUX_OK, "put base link");
     flux_id_t base = link.id;
-    flux_meta_kv_t ln2 = {"name", "arm"};
+    flux_meta_kv_t ln2 = {"name", "arm", FLUX_META_STRING};
     flux_record_t link2 = {0};
     link2.layer = FLUX_LAYER_BODY; link2.kind = "robot/link"; link2.meta = &ln2; link2.meta_count = 1;
     CHECK(flux_put(w, &link2) == FLUX_OK, "put arm link");
     flux_id_t arm = link2.id;
-    flux_link_t jl = {0};
-    memcpy(jl.target.bytes, arm.bytes, 16); jl.rel = "child";
-    static const char* rp = "parent";
-    flux_link_t jpar = {0};
-    memcpy(jpar.target.bytes, base.bytes, 16); jpar.rel = rp;
-    flux_link_t jlinks[2] = {0};
-    jlinks[0] = jpar; jlinks[1] = jl;
-    flux_meta_kv_t jt = {"type", "revolute"};
+    /* joint: parent/child as REF-typed meta entries */
+    static char base_hex_l[33], arm_hex_l[33];
+    static char base_ref[80], arm_ref[80];
+    static flux_meta_kv_t jm[3];
+    flux_id_to_hex(&base, base_hex_l);
+    flux_id_to_hex(&arm,  arm_hex_l);
+    flux_ref_encode(base_ref, sizeof(base_ref), base_hex_l, NULL);
+    flux_ref_encode(arm_ref,  sizeof(arm_ref),  arm_hex_l,  NULL);
+    jm[0].key = "type";   jm[0].val = "revolute"; jm[0].type = FLUX_META_STRING;
+    jm[1].key = "parent"; jm[1].val = base_ref;   jm[1].type = FLUX_META_REF;
+    jm[2].key = "child";  jm[2].val = arm_ref;    jm[2].type = FLUX_META_REF;
     flux_record_t joint = {0};
-    joint.layer = FLUX_LAYER_BODY; joint.kind = "robot/joint"; joint.meta = &jt; joint.meta_count = 1;
-    joint.links = jlinks; joint.link_count = 2;
+    joint.layer = FLUX_LAYER_BODY; joint.kind = "robot/joint"; joint.meta = jm; joint.meta_count = 3;
     CHECK(flux_put(w, &joint) == FLUX_OK, "put joint");
 
     /* MIND: a task concept + an agent card */
-    flux_meta_kv_t cm = {"title", "pick"};
+    flux_meta_kv_t cm = {"title", "pick", FLUX_META_STRING};
     flux_record_t concept = {0};
     concept.layer = FLUX_LAYER_MIND; concept.kind = "concept";
     concept.meta = &cm; concept.meta_count = 1;
@@ -80,7 +83,7 @@ int main(void) {
     CHECK(flux_put(w, &card) == FLUX_OK, "put agent card");
 
     /* JOURNAL: an initial PHM signal */
-    flux_meta_kv_t sm = {"name", "battery"};
+    flux_meta_kv_t sm = {"name", "battery", FLUX_META_STRING};
     flux_record_t sig = {0};
     sig.layer = FLUX_LAYER_JOURNAL; sig.kind = "signal"; sig.clock = FLUX_CLOCK_DEVICE_MONOTONIC;
     sig.meta = &sm; sig.meta_count = 1;
@@ -104,7 +107,7 @@ int main(void) {
     /* 3. OPERATE: append a second PHM signal (journal grows, on-device-style) */
     flux_txn_t* w2 = NULL;
     CHECK(flux_txn_begin_write(s, &w2) == FLUX_OK, "begin write operate");
-    flux_meta_kv_t sm2 = {"name", "temp"};
+    flux_meta_kv_t sm2 = {"name", "temp", FLUX_META_STRING};
     flux_record_t sig2 = {0};
     sig2.layer = FLUX_LAYER_JOURNAL; sig2.kind = "signal"; sig2.clock = FLUX_CLOCK_DEVICE_MONOTONIC;
     sig2.meta = &sm2; sig2.meta_count = 1;

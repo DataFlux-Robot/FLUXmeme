@@ -2,6 +2,7 @@
  * Writes a TEXT concept (with embedded newline + link) and a small BIN record,
  * converts to .fluxa, re-ingests, asserts fields/payload/link survive. */
 #include "fluxmeme/fluxmeme.h"
+#include "../src/core/ref_utils.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -29,20 +30,21 @@ int main(void) {
     flux_id_t mesh_id = m.id;
 
     /* concept TEXT with embedded newline + a link to the mesh */
-    flux_meta_kv_t meta[1] = { {"title", "Hello"} };
-    flux_link_t link;
-    memset(&link, 0, sizeof(link));
-    memcpy(link.target.bytes, mesh_id.bytes, 16);
-    link.rel = "references";
+    static char mesh_hex[33];
+    static char mesh_ref[80];
+    flux_id_to_hex(&mesh_id, mesh_hex);
+    flux_ref_encode(mesh_ref, sizeof(mesh_ref), mesh_hex, NULL);
+    flux_meta_kv_t meta[2] = {
+        {"title", "Hello", FLUX_META_STRING},
+        {"references", mesh_ref, FLUX_META_REF},
+    };
     flux_record_t c;
     memset(&c, 0, sizeof(c));
     c.layer = FLUX_LAYER_MIND;
     c.pclass = FLUX_PCLASS_TEXT;
     c.kind = "concept";
     c.meta = meta;
-    c.meta_count = 1;
-    c.links = &link;
-    c.link_count = 1;
+    c.meta_count = 2;
     c.payload.data = (const uint8_t*)"hello\nworld";
     c.payload.len = 11;
     CHECK(flux_put(w, &c) == FLUX_OK, "put concept");
@@ -73,7 +75,7 @@ int main(void) {
         if (rec.pclass == FLUX_PCLASS_TEXT && rec.kind && strcmp(rec.kind, "concept") == 0) {
             if (rec.payload.len == 11 && memcmp(rec.payload.data, "hello\nworld", 11) == 0)
                 text_ok++;
-            if (rec.link_count >= 1) link_ok++;
+            if (flux_ref_count(&rec) >= 1) link_ok++;
         }
         if (rec.pclass == FLUX_PCLASS_BIN && rec.kind && strcmp(rec.kind, "mesh") == 0) {
             if (rec.payload.len == 4 && memcmp(rec.payload.data, bin, 4) == 0)
