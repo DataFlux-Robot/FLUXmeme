@@ -153,7 +153,7 @@ flux_status_t flux_del(flux_txn_t* txn, const flux_id_t* id) {
     char hex[33];
     flux_id_to_hex(id, hex);
     const char* k = "target";
-    flux_meta_kv_t meta = { k, hex };
+    flux_meta_kv_t meta = { k, hex, FLUX_META_STRING };
     flux_record_t rec;
     memset(&rec, 0, sizeof(rec));
     memcpy(rec.id.bytes, id->bytes, 16);

@@ -4,6 +4,7 @@
  * agent). Reverses a2a_out. MSVC-safe (no nested functions). */
 #include "fluxmeme/fluxmeme.h"
 #include "../fsutil.h"
+#include "../../core/ref_utils.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -51,11 +52,16 @@ static void put_one(const char* dir, const char* name, const char* kind,
     char* content = read_file(path, &len);
     if (!content) return;
 
-    flux_link_t link;
-    memset(&link, 0, sizeof(link));
-    if (card_id && strcmp(kind, "task") == 0) {
-        memcpy(link.target.bytes, card_id->bytes, 16);
-        link.rel = "part_of";
+    /* tasks get a `part_of` REF connection back to the agent card */
+    flux_meta_kv_t ref_meta;
+    char ref_val[80];
+    int is_task = (card_id && strcmp(kind, "task") == 0);
+    if (is_task) {
+        char chex[33]; flux_id_to_hex(card_id, chex);
+        flux_ref_encode(ref_val, sizeof(ref_val), chex, "");
+        ref_meta.key = "part_of";
+        ref_meta.val = ref_val;
+        ref_meta.type = FLUX_META_REF;
     }
 
     flux_record_t rec;
@@ -65,9 +71,9 @@ static void put_one(const char* dir, const char* name, const char* kind,
     rec.pclass = FLUX_PCLASS_TEXT;
     rec.kind = kind;
     rec.ptype = "application/json";
-    if (card_id && strcmp(kind, "task") == 0) {
-        rec.links = &link;
-        rec.link_count = 1;
+    if (is_task) {
+        rec.meta = &ref_meta;
+        rec.meta_count = 1;
     }
     rec.payload.data = (const uint8_t*)content;
     rec.payload.len = len;

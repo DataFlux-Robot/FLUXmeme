@@ -1,4 +1,9 @@
-/* FLUXmeme — core types. See SPEC.md. */
+/* FLUXmeme v2 — core types. See SPEC.md.
+ *
+ * v2 change: links[] DELETED. Connections are REF-typed meta entries.
+ * One mechanism (typed meta KV) carries everything: properties, connections,
+ * structured data. Multi-topology via @graph suffix on REF values.
+ */
 #ifndef FLUXMEME_TYPES_H
 #define FLUXMEME_TYPES_H
 
@@ -11,18 +16,18 @@ extern "C" {
 
 /* --- Layers (bitset; the three "natures" of an embodied node) --- */
 typedef enum {
-    FLUX_LAYER_BODY    = 0x01, /* physical structure -> USD */
-    FLUX_LAYER_MIND    = 0x02, /* knowledge + agent skills -> OKF + A2A */
-    FLUX_LAYER_JOURNAL = 0x04  /* lifetime log / PHM -> MCAP + MAVLink */
+    FLUX_LAYER_BODY    = 0x01,
+    FLUX_LAYER_MIND    = 0x02,
+    FLUX_LAYER_JOURNAL = 0x04
 } flux_layer_t;
 
 /* --- Payload class --- */
 typedef enum {
-    FLUX_PCLASS_TEXT = 1, /* UTF-8 bytes */
-    FLUX_PCLASS_BIN  = 2  /* raw bytes */
+    FLUX_PCLASS_TEXT = 1,
+    FLUX_PCLASS_BIN  = 2
 } flux_pclass_t;
 
-/* --- Clock domain (JOURNAL records; multi-clock alignment across sim/real/MCU) --- */
+/* --- Clock domain --- */
 typedef enum {
     FLUX_CLOCK_SIM_TIME        = 0,
     FLUX_CLOCK_WALL_TIME       = 1,
@@ -37,13 +42,23 @@ typedef enum {
     FLUX_ERR_LOCKED,
     FLUX_ERR_NOTFOUND,
     FLUX_ERR_ARG,
-    FLUX_ERR_VERSION, /* optimistic CAS mismatch */
+    FLUX_ERR_VERSION,
     FLUX_ERR_NOMEM,
-    FLUX_ERR_RANGE,   /* cap exceeded (untrusted-input hardening) */
+    FLUX_ERR_RANGE,
     FLUX_ERR_CORRUPT
 } flux_status_t;
 
-/* 16-byte ULID-like identity. Sorted (time-first) + globally unique. */
+/* --- Meta value types (v2) --- */
+typedef enum {
+    FLUX_META_STRING = 0,  /* "revolute" */
+    FLUX_META_INT    = 1,  /* "42" → int64 */
+    FLUX_META_FLOAT  = 2,  /* "23.7" → double */
+    FLUX_META_BOOL   = 3,  /* "true" / "false" */
+    FLUX_META_JSON   = 4,  /* "{\"pin1\":\"CAN_H\"}" — embedded structured data */
+    FLUX_META_REF    = 5,  /* "019f0411...3ec@mechanical" — cross-record link with @graph */
+} flux_meta_type_t;
+
+/* 16-byte ULID-like identity. */
 typedef struct {
     uint8_t bytes[16];
 } flux_id_t;
@@ -54,47 +69,39 @@ typedef struct {
     size_t len;
 } flux_buf_t;
 
-/* OKF-style frontmatter key/value pair. Strings are null-terminated. */
-typedef struct {
-    const char* key;
-    const char* val;
-} flux_meta_kv_t;
-
-/* Directed graph edge: target record + relationship. rel is null-terminated. */
-typedef struct {
-    flux_id_t target;
-    const char* rel;
-} flux_link_t;
-
-/* The universal atom. Every facet is one of these.
- *
- * Ownership:
- *   - When the CALLER builds a record to put(): all pointers (path, ptype,
- *     kind, meta[].key/val, links[].rel, payload.data) are BORROWED for the
- *     duration of the call only; flux_put copies what it needs.
- *   - When the ENGINE returns a record (flux_get / flux_iter_next): all
- *     pointers point into HEAP MEMORY owned by that record handle; free with
- *     flux_record_free(). Pointers are invalidated once the record is freed.
+/* v2 meta KV: key + string-encoded val + type tag.
+ * For REF type, val = "32-hex-id@graph" (graph optional; default = "").
+ * Multiple entries with same key + type=REF = multi-valued connection (e.g. children).
  */
 typedef struct {
-    flux_id_t id;          /* filled by engine on put/get */
+    const char*      key;
+    const char*      val;
+    flux_meta_type_t type;
+} flux_meta_kv_t;
+
+/* The universal atom (v2). NO links[] — connections are REF-typed meta.
+ *
+ * Ownership:
+ *   - CALLER builds: pointers borrowed for the call; flux_put copies.
+ *   - ENGINE returns: heap copy; free with flux_record_free().
+ */
+typedef struct {
+    flux_id_t id;
     flux_layer_t layer;
     flux_pclass_t pclass;
     flux_clock_t clock;
-    const char* path;      /* human-readable in-layer path, may be NULL */
+    const char* path;      /* may be NULL */
     const char* ptype;     /* mime hint, may be NULL */
-    const char* kind;      /* canonical or open kind token, may be NULL */
+    const char* kind;      /* canonical or open kind, may be NULL */
 
-    const flux_meta_kv_t* meta;
+    const flux_meta_kv_t* meta;   /* ALL data: properties + connections + JSON */
     uint32_t meta_count;
+    /* links[] DELETED in v2 — use REF-typed meta */
 
-    const flux_link_t* links;
-    uint32_t link_count;
+    flux_buf_t payload;
 
-    flux_buf_t payload;    /* TEXT or BIN */
-
-    uint64_t ts;           /* timestamp */
-    uint32_t ver;          /* MVCC version (commit_seq) */
+    uint64_t ts;
+    uint32_t ver;
 } flux_record_t;
 
 /* Hex codec for ids (32 hex chars + NUL). buf must be >= 33 bytes. */

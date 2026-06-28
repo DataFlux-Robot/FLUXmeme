@@ -1,5 +1,6 @@
 /* device-comm facet — load + protocol query. */
 #include "device_comm.h"
+#include "../core/ref_utils.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -40,11 +41,12 @@ flux_status_t flux_dcomm_load(const flux_txn_t* txn, flux_dcomm* out) {
             memset(e, 0, sizeof(*e));
             e->id = r.id;
             copy_str(e->protocol, sizeof(e->protocol), meta_val(&r, "protocol"));
-            for (uint32_t i = 0; i < r.link_count; ++i) {
-                const char* rel = r.links[i].rel ? r.links[i].rel : "";
-                if (strcmp(rel, "a") == 0) e->a = r.links[i].target;
-                else if (strcmp(rel, "b") == 0) e->b = r.links[i].target;
-            }
+            /* endpoints a/b are REF-typed meta entries (keys "a"/"b") */
+            char hex33[33]; const char* graph = NULL;
+            if (flux_ref_by_rel(&r, "a", hex33, &graph) == FLUX_OK)
+                flux_id_from_hex(hex33, &e->a);
+            if (flux_ref_by_rel(&r, "b", hex33, &graph) == FLUX_OK)
+                flux_id_from_hex(hex33, &e->b);
         }
         flux_record_free(&r);
     }

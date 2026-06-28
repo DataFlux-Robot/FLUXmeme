@@ -1,0 +1,75 @@
+{
+  "version": "1.0",
+  "description": "FLUXmeme motor library — curated real-world motor specs (from URDF-Studio / vendor datasheets). Use with Record(layer=BODY, kind='robot/joint', meta={...motor fields...}) to attach hardware metadata.",
+  "motors": {
+    "Unitree": {
+      "Go1-M8010-6": {
+        "armature": 0.00085,
+        "velocity": 23.7,
+        "effort": 23.7,
+        "url": "https://www.unitree.com",
+        "description": "Unitree Go1 / A1 leg motor, 8010 series, 6:1 ratio"
+      },
+      "A1-8010": {
+        "armature": 0.00085,
+        "velocity": 23.7,
+        "effort": 23.7,
+        "url": "https://www.unitree.com",
+        "description": "Unitree A1 leg motor"
+      },
+      "B1-10010": {
+        "armature": 0.00230,
+        "velocity": 16.0,
+        "effort": 40.0,
+        "url": "https://www.unitree.com",
+        "description": "Unitree B1 (large dog) leg motor"
+      }
+    },
+    "RobStride": {
+      "RS_01": {
+        "armature": 0.00015,
+        "velocity": 30.0,
+        "effort": 12.0,
+        "url": "https://www.robstride.com",
+        "description": "RobStride RS_01 mini actuator"
+      },
+      "RS_04": {
+        "armature": 0.00045,
+        "velocity": 25.0,
+        "effort": 30.0,
+        "url": "https://www.robstride.com",
+        "description": "RobStride RS_04 mid-range actuator"
+      },
+      "RS_06": {
+        "armature": 0.00080,
+        "velocity": 20.0,
+        "effort": 45.0,
+        "url": "https://www.robstride.com",
+        "description": "RobStride RS_06 high-torque actuator"
+      }
+    },
+    "DAMIAO": {
+      "DM-J3507-2EC": {
+        "armature": 0.00012,
+        "velocity": 28.0,
+        "effort": 10.0,
+        "url": "https://www.damiaobbs.com",
+        "description": "DAMIAO DM-J3507-2EC, compact actuator"
+      },
+      "DM-J4310-2EC V1.1": {
+        "armature": 0.00035,
+        "velocity": 26.0,
+        "effort": 17.0,
+        "url": "https://www.damiaobbs.com",
+        "description": "DAMIAO DM-J4310-2EC V1.1, mid-range"
+      },
+      "DM-J4310P-2EC": {
+        "armature": 0.00038,
+        "velocity": 24.0,
+        "effort": 19.0,
+        "url": "https://www.damiaobbs.com",
+        "description": "DAMIAO DM-J4310P-2EC, high-performance"
+      }
+    }
+  }
+}

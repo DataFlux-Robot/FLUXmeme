@@ -1,5 +1,6 @@
 /* composition — LIVRPS field-level merge + variants over a layer stack. */
 #include "compose.h"
+#include "../core/ref_utils.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -140,22 +141,55 @@ static int variant_active(const flux_compose_t* c, const flux_record_t* r) {
 }
 
 /* ---- field-level merge ---- */
-static void meta_set(flux_record_t* out, const char* key, const char* val) {
-    for (uint32_t i = 0; i < out->meta_count; ++i)
-        if (out->meta[i].key && strcmp(out->meta[i].key, key) == 0) return; /* keep strongest */
+/* typed variant: preserves the meta type tag (string/int/float/bool/json/ref).
+ * For non-REF meta: dedup by key, strongest-wins (first wins).
+ * For REF meta (multi-valued): do NOT dedup here — handled by ref_add. */
+static void meta_set_typed(flux_record_t* out, const char* key, const char* val,
+                           flux_meta_type_t type) {
+    if (type != FLUX_META_REF) {
+        for (uint32_t i = 0; i < out->meta_count; ++i)
+            if (out->meta[i].key && strcmp(out->meta[i].key, key) == 0)
+                return; /* keep strongest */
+    }
     out->meta = realloc((void*)out->meta, (out->meta_count + 1) * sizeof(flux_meta_kv_t));
     ((flux_meta_kv_t*)out->meta)[out->meta_count].key = strdup(key);
     ((flux_meta_kv_t*)out->meta)[out->meta_count].val = strdup(val);
+    ((flux_meta_kv_t*)out->meta)[out->meta_count].type = type;
     out->meta_count++;
 }
-static void link_add(flux_record_t* out, const flux_link_t* lk) {
-    for (uint32_t i = 0; i < out->link_count; ++i)
-        if (memcmp(out->links[i].target.bytes, lk->target.bytes, 16) == 0)
-            return; /* dedup by target */
-    out->links = realloc((void*)out->links, (out->link_count + 1) * sizeof(flux_link_t));
-    flux_link_t* dst = &((flux_link_t*)out->links)[out->link_count++];
-    memcpy(dst->target.bytes, lk->target.bytes, 16);
-    dst->rel = lk->rel ? strdup(lk->rel) : NULL;
+static void meta_set(flux_record_t* out, const char* key, const char* val) {
+    meta_set_typed(out, key, val, FLUX_META_STRING);
+}
+
+/* add a REF meta entry; dedup by 32-hex target id (the val prefix), multi-valued.
+ * Connections are multi-valued: a record may carry several REFs with the same
+ * key but different targets, or the same target under different keys. We dedup
+ * only on identical (target) so a parent link merged from two layers isn't doubled. */
+static void ref_add(flux_record_t* out, const char* key, const char* val) {
+    /* target = first 32 chars of val (the hex id, before any '@graph') */
+    char target[33];
+    const char* at = strchr(val, '@');
+    size_t hlen = at ? (size_t)(at - val) : strlen(val);
+    if (hlen >= 32) { memcpy(target, val, 32); target[32] = '\0'; }
+    else { target[0] = '\0'; }
+    for (uint32_t i = 0; i < out->meta_count; ++i) {
+        if (out->meta[i].type != FLUX_META_REF) continue;
+        const char* ov = out->meta[i].val ? out->meta[i].val : "";
+        const char* oat = strchr(ov, '@');
+        size_t ol = oat ? (size_t)(oat - ov) : strlen(ov);
+        if (ol >= 32 && memcmp(ov, target, 32) == 0) return; /* same target already present */
+    }
+    meta_set_typed(out, key, val, FLUX_META_REF);
+}
+
+/* pull every REF meta entry from src into out (union, dedup by target). */
+static void merge_refs(flux_record_t* out, const flux_record_t* src) {
+    char hex33[33]; const char* rel = NULL; const char* graph = NULL;
+    for (uint32_t i = 0; flux_ref_at(src, i, hex33, &rel, &graph) == FLUX_OK; ++i) {
+        char val[80];
+        flux_ref_encode(val, sizeof(val), hex33, graph);
+        ref_add(out, rel ? rel : "related", val);
+    }
 }
 
 /* collect active versions (strongest first) and merge field-by-field into out */
@@ -190,17 +224,17 @@ static flux_status_t compose_resolve(flux_compose_t* c, const flux_id_t* id, flu
                 out->payload.data = p;
                 out->payload.len = r.payload.len;
             }
-            /* meta: strongest-wins-per-key */
+            /* meta: strongest-wins-per-key (non-REF); REF handled as union below */
             for (uint32_t i = 0; i < r.meta_count; ++i) {
                 const char* k = r.meta[i].key ? r.meta[i].key : "";
                 const char* v = r.meta[i].val ? r.meta[i].val : "";
                 if (strcmp(k, "flux_variant") == 0 || strcmp(k, "flux_variant_set") == 0)
                     continue; /* internal; don't leak into merged view */
-                meta_set(out, k, v);
+                if (r.meta[i].type == FLUX_META_REF) continue; /* merged as union */
+                meta_set_typed(out, k, v, r.meta[i].type);
             }
-            /* links: union */
-            for (uint32_t i = 0; i < r.link_count; ++i)
-                link_add(out, &r.links[i]);
+            /* connections (REF meta): union, dedup by target */
+            merge_refs(out, &r);
             flux_record_free(&r);
         } else if (flux_get(t, id, &r) == FLUX_OK) {
             flux_record_free(&r); /* present but variant-inactive */
@@ -236,10 +270,13 @@ static flux_status_t compose_resolve(flux_compose_t* c, const flux_id_t* id, flu
                                 strcmp(bk, "flux_variant") == 0 ||
                                 strcmp(bk, "flux_variant_set") == 0)
                                 continue;
-                            meta_set(out, bk, base.meta[i].val ? base.meta[i].val : "");
+                            if (base.meta[i].type == FLUX_META_REF) continue; /* union below */
+                            meta_set_typed(out, bk,
+                                           base.meta[i].val ? base.meta[i].val : "",
+                                           base.meta[i].type);
                         }
-                        for (uint32_t i = 0; i < base.link_count; ++i)
-                            link_add(out, &base.links[i]);
+                        /* connections (REF meta): union from base, dedup by target */
+                        merge_refs(out, &base);
                         flux_record_free(&base);
                         flux_txn_rollback(t2);
                         break; /* strongest base version */

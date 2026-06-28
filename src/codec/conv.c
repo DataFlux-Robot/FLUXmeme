@@ -10,16 +10,39 @@
  *   T <ts>
  *   C sim_time|wall_time|device_monotonic
  *   B TEXT|BIN
- *   M <key>=<val>            (repeatable; val escapes \ \n \r)
- *   N <32-hex target>=<rel>  (repeatable)
+ *   M <key>=<type>:<val>    (repeatable; type ∈ string|int|float|bool|json|ref;
+ *                            val escapes \ \n \r; ref val is "32hex@graph")
  *   D <len>                  (TEXT payload: next `len` bytes verbatim, then \n)
  *   X <hexlen>               (BIN payload: next `hexlen` hex chars, then \n)
+ * v2: connections are REF-typed M lines; the old N line type is removed.
  * See SPEC §1.5. */
 #include "fluxmeme/fluxmeme.h"
+#include "../core/ref_utils.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <ctype.h>
+
+/* ---------- meta type names ---------- */
+static const char* type_str(flux_meta_type_t t) {
+    switch (t) {
+    case FLUX_META_INT:   return "int";
+    case FLUX_META_FLOAT: return "float";
+    case FLUX_META_BOOL:  return "bool";
+    case FLUX_META_JSON:  return "json";
+    case FLUX_META_REF:   return "ref";
+    case FLUX_META_STRING:
+    default:              return "string";
+    }
+}
+static flux_meta_type_t type_from_str(const char* s) {
+    if (strcmp(s, "int") == 0)   return FLUX_META_INT;
+    if (strcmp(s, "float") == 0) return FLUX_META_FLOAT;
+    if (strcmp(s, "bool") == 0)  return FLUX_META_BOOL;
+    if (strcmp(s, "json") == 0)  return FLUX_META_JSON;
+    if (strcmp(s, "ref") == 0)   return FLUX_META_REF;
+    return FLUX_META_STRING;
+}
 
 /* ---------- layer / clock names ---------- */
 static const char* layer_str(int l) {
@@ -96,13 +119,10 @@ flux_status_t flux_conv_to_fluxa(const flux_txn_t* txn, const char* out_fluxa) {
             fprintf(f, "M ");
             emit_escape(f, r.meta[i].key ? r.meta[i].key : "");
             fputc('=', f);
+            fputs(type_str(r.meta[i].type), f);
+            fputc(':', f);
             emit_escape(f, r.meta[i].val ? r.meta[i].val : "");
             fputc('\n', f);
-        }
-        for (uint32_t i = 0; i < r.link_count; ++i) {
-            char th[33];
-            flux_id_to_hex(&r.links[i].target, th);
-            fprintf(f, "N %s=%s\n", th, r.links[i].rel ? r.links[i].rel : "");
         }
         if (r.pclass == FLUX_PCLASS_BIN) {
             fprintf(f, "X %zu\n", r.payload.len * 2);
@@ -170,15 +190,13 @@ static void parse_hex_payload(const char* s, size_t total, size_t* off, size_t h
 
 /* commit the in-progress record to the txn */
 static void flush_rec(flux_record_t* rec, flux_meta_kv_t** meta, uint32_t* mc,
-                      flux_link_t** links, uint32_t* lc, flux_txn_t* txn) {
+                      flux_txn_t* txn) {
     int id_nz = 0;
     for (int b = 0; b < 16; ++b)
         if (rec->id.bytes[b]) { id_nz = 1; break; }
-    if (id_nz || *mc || *lc || rec->payload.len || rec->kind) {
+    if (id_nz || *mc || rec->payload.len || rec->kind) {
         rec->meta = *meta;
         rec->meta_count = *mc;
-        rec->links = *links;
-        rec->link_count = *lc;
         flux_put(txn, rec);
     }
     /* free per-record temporaries (flux_put copied) */
@@ -186,14 +204,10 @@ static void flush_rec(flux_record_t* rec, flux_meta_kv_t** meta, uint32_t* mc,
         for (uint32_t i = 0; i < *mc; ++i) { free((void*)(*meta)[i].key); free((void*)(*meta)[i].val); }
         free(*meta);
     }
-    if (*links) {
-        for (uint32_t i = 0; i < *lc; ++i) free((void*)(*links)[i].rel);
-        free(*links);
-    }
     free((void*)rec->kind); free((void*)rec->ptype); free((void*)rec->path);
     free((void*)rec->payload.data);
     memset(rec, 0, sizeof(*rec));
-    *meta = NULL; *mc = 0; *links = NULL; *lc = 0;
+    *meta = NULL; *mc = 0;
 }
 
 flux_status_t flux_conv_from_fluxa(const char* in_fluxa, flux_txn_t* txn) {
@@ -212,7 +226,6 @@ flux_status_t flux_conv_from_fluxa(const char* in_fluxa, flux_txn_t* txn) {
     flux_record_t rec;
     memset(&rec, 0, sizeof(rec));
     flux_meta_kv_t* meta = NULL; uint32_t mc = 0;
-    flux_link_t* links = NULL; uint32_t lc = 0;
     size_t off = 0;
     size_t llen = 0;
     char* line;
@@ -223,7 +236,7 @@ flux_status_t flux_conv_from_fluxa(const char* in_fluxa, flux_txn_t* txn) {
         char* rest = (llen >= 2 && line[1] == ' ') ? line + 2 : line + 1;
 
         if (tag == 'R') {
-            flush_rec(&rec, &meta, &mc, &links, &lc, txn);
+            flush_rec(&rec, &meta, &mc, txn);
             flux_id_from_hex(rest, &rec.id);
         } else if (tag == 'L') {
             rec.layer = (flux_layer_t)layer_from_str(rest);
@@ -243,26 +256,30 @@ flux_status_t flux_conv_from_fluxa(const char* in_fluxa, flux_txn_t* txn) {
             char* eq = strchr(rest, '=');
             if (eq) {
                 *eq = '\0';
-                size_t kl = strlen(rest), vl = strlen(eq + 1);
+                /* value may carry a "<type>:" prefix; default string */
+                flux_meta_type_t mt = FLUX_META_STRING;
+                char* rawv = eq + 1;
+                char* colon = strchr(rawv, ':');
+                char tn[8];
+                if (colon && (size_t)(colon - rawv) < sizeof(tn)) {
+                    size_t tnl = (size_t)(colon - rawv);
+                    memcpy(tn, rawv, tnl);
+                    tn[tnl] = '\0';
+                    /* accept only known type names; otherwise treat whole thing as val */
+                    if (strcmp(tn,"string")==0||strcmp(tn,"int")==0||strcmp(tn,"float")==0||
+                        strcmp(tn,"bool")==0||strcmp(tn,"json")==0||strcmp(tn,"ref")==0) {
+                        mt = type_from_str(tn);
+                        rawv = colon + 1;
+                    }
+                }
+                size_t kl = strlen(rest), vl = strlen(rawv);
                 char* k = strdup(rest);
-                char* v = strdup(eq + 1);
+                char* v = strdup(rawv);
                 kl = unescape_inplace(k, kl);
                 vl = unescape_inplace(v, vl);
                 k[kl] = '\0'; v[vl] = '\0';
                 meta = realloc(meta, (mc + 1) * sizeof(flux_meta_kv_t));
-                meta[mc].key = k; meta[mc].val = v; mc++;
-            }
-        } else if (tag == 'N') {
-            char* eq = strchr(rest, '=');
-            if (eq && eq - rest == 32) {
-                *eq = '\0';
-                flux_id_t tid;
-                if (flux_id_from_hex(rest, &tid) == FLUX_OK) {
-                    links = realloc(links, (lc + 1) * sizeof(flux_link_t));
-                    memcpy(links[lc].target.bytes, tid.bytes, 16);
-                    links[lc].rel = strdup(eq + 1);
-                    lc++;
-                }
+                meta[mc].key = k; meta[mc].val = v; meta[mc].type = mt; mc++;
             }
         } else if (tag == 'D') {
             size_t len = (size_t)strtoull(rest, NULL, 10);
@@ -280,7 +297,7 @@ flux_status_t flux_conv_from_fluxa(const char* in_fluxa, flux_txn_t* txn) {
         }
         free(line);
     }
-    flush_rec(&rec, &meta, &mc, &links, &lc, txn);
+    flush_rec(&rec, &meta, &mc, txn);
     free(src);
     return FLUX_OK;
 }

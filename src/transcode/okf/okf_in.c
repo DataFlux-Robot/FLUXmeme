@@ -2,6 +2,7 @@
  * MIND/kind=concept records. Reverses okf_out. See SPEC.md §2. */
 #include "fluxmeme/fluxmeme.h"
 #include "../fsutil.h"
+#include "../../core/ref_utils.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -63,6 +64,7 @@ static void ingest_one(const char* name, void* ud) {
                 while (*v == ' ') v++;
                 meta[mc].key = strdup(p);
                 meta[mc].val = strdup(v);
+                meta[mc].type = FLUX_META_STRING;
                 if (strcmp(p, "type") == 0) kind = meta[mc].val;
                 mc++;
             }
@@ -75,15 +77,13 @@ static void ingest_one(const char* name, void* ud) {
     size_t body_len = strlen(body);
 
     /* parse the "## Links" wikilink section (okf_out convention); strip it from
-     * the body so the markdown payload round-trips cleanly. */
-    flux_link_t links[16];
-    char* rels_to_free[16];
-    uint32_t lc = 0, nrf = 0;
+     * the body so the markdown payload round-trips cleanly. Each link becomes a
+     * REF-typed meta entry: key=rel, val="32hex" (encoded via flux_ref_encode). */
     char* lsec = strstr(body, "\n## Links");
     if (lsec) {
         body_len = (size_t)(lsec - body);
         char* line = strchr(lsec, '\n');
-        while (line && lc < 16) {
+        while (line && mc < 32) {
             line++;
             if (strncmp(line, "- [[", 4) != 0) { line = strchr(line, '\n'); continue; }
             char* hexp = line + 4;
@@ -94,17 +94,24 @@ static void ingest_one(const char* name, void* ud) {
             hexbuf[32] = '\0';
             flux_id_t tid;
             if (flux_id_from_hex(hexbuf, &tid) != FLUX_OK) { line = strchr(line, '\n'); continue; }
-            memcpy(links[lc].target.bytes, tid.bytes, 16);
+            /* rel key (default "related"); pull from trailing "(...)" */
+            char relbuf[64];
             const char* rel = "related";
             char* paren = strchr(close, '(');
             char* pend = paren ? strchr(paren, ')') : NULL;
             if (paren && pend && pend > paren + 1) {
-                *pend = '\0';
-                rel = strdup(paren + 1);
-                rels_to_free[nrf++] = (char*)rel;
+                size_t rl = (size_t)(pend - paren - 1);
+                if (rl >= sizeof(relbuf)) rl = sizeof(relbuf) - 1;
+                memcpy(relbuf, paren + 1, rl);
+                relbuf[rl] = '\0';
+                rel = relbuf;
             }
-            links[lc].rel = rel;
-            lc++;
+            char refval[33];
+            flux_ref_encode(refval, sizeof(refval), hexbuf, "");
+            meta[mc].key = strdup(rel);
+            meta[mc].val = strdup(refval);
+            meta[mc].type = FLUX_META_REF;
+            mc++;
             line = strchr(line, '\n');
         }
     }
@@ -119,15 +126,12 @@ static void ingest_one(const char* name, void* ud) {
     rec.ptype = "text/markdown";
     rec.meta = meta;
     rec.meta_count = mc;
-    rec.links = (lc ? links : NULL);
-    rec.link_count = lc;
     rec.payload.data = (const uint8_t*)body;
     rec.payload.len = body_len;
     rec.ts = (uint64_t)time(NULL) * 1000ULL;
 
     flux_put(c->txn, &rec);
 
-    for (uint32_t i = 0; i < nrf; ++i) free(rels_to_free[i]);
     for (uint32_t i = 0; i < mc; ++i) { free((void*)meta[i].key); free((void*)meta[i].val); }
     free(content);
     c->count++;

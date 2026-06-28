@@ -1,5 +1,6 @@
 /* robot-graph — BODY kinematics facet: load + closed-loop (cycle) detection. */
 #include "robot_graph.h"
+#include "../core/ref_utils.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -37,11 +38,12 @@ flux_status_t flux_robot_load(const flux_txn_t* txn, flux_robot_graph* out) {
             memset(J, 0, sizeof(*J));
             J->id = r.id;
             copy_str(J->type, sizeof(J->type), meta_val(&r, "type"));
-            for (uint32_t i = 0; i < r.link_count; ++i) {
-                const char* rel = r.links[i].rel ? r.links[i].rel : "";
-                if (strcmp(rel, "parent") == 0) J->parent = r.links[i].target;
-                else if (strcmp(rel, "child") == 0) J->child = r.links[i].target;
-            }
+            /* parent/child are REF-typed meta entries (keys "parent"/"child") */
+            char hex33[33]; const char* graph = NULL;
+            if (flux_ref_by_rel(&r, "parent", hex33, &graph) == FLUX_OK)
+                flux_id_from_hex(hex33, &J->parent);
+            if (flux_ref_by_rel(&r, "child", hex33, &graph) == FLUX_OK)
+                flux_id_from_hex(hex33, &J->child);
         }
         flux_record_free(&r);
     }

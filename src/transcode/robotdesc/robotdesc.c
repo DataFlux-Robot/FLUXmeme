@@ -5,6 +5,7 @@
  * scanner handles both. URDF is a tree; closed loops can be added afterward via
  * robot/constraint. See SPEC §6C. */
 #include "fluxmeme/fluxmeme.h"
+#include "../../core/ref_utils.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -59,7 +60,7 @@ static flux_id_t* map_get(name_id_t* m, size_t n, const char* name) {
 }
 
 static void put_link(flux_txn_t* txn, const char* name, flux_id_t* id_out) {
-    flux_meta_kv_t mk = {"name", name};
+    flux_meta_kv_t mk = {"name", name, FLUX_META_STRING};
     flux_record_t r;
     memset(&r, 0, sizeof(r));
     r.layer = FLUX_LAYER_BODY;
@@ -73,22 +74,21 @@ static void put_link(flux_txn_t* txn, const char* name, flux_id_t* id_out) {
 
 static void put_joint(flux_txn_t* txn, const char* type,
                       const flux_id_t* parent, const flux_id_t* child) {
-    static const char* rp = "parent";
-    static const char* rc = "child";
-    flux_link_t lk[2];
-    memset(lk, 0, sizeof(lk));
-    memcpy(lk[0].target.bytes, parent->bytes, 16); lk[0].rel = rp;
-    memcpy(lk[1].target.bytes, child->bytes, 16);  lk[1].rel = rc;
     const char* t = (type && *type) ? type : "fixed";
-    flux_meta_kv_t mk = {"type", t};
+    char phex[33]; flux_id_to_hex(parent, phex);
+    char chex[33]; flux_id_to_hex(child, chex);
+    char pval[80]; flux_ref_encode(pval, sizeof(pval), phex, "mechanical");
+    char cval[80]; flux_ref_encode(cval, sizeof(cval), chex, "mechanical");
+    flux_meta_kv_t mk[3];
+    mk[0].key = "type";   mk[0].val = t;    mk[0].type = FLUX_META_STRING;
+    mk[1].key = "parent"; mk[1].val = pval; mk[1].type = FLUX_META_REF;
+    mk[2].key = "child";  mk[2].val = cval; mk[2].type = FLUX_META_REF;
     flux_record_t r;
     memset(&r, 0, sizeof(r));
     r.layer = FLUX_LAYER_BODY;
     r.kind = "robot/joint";
-    r.meta = &mk;
-    r.meta_count = 1;
-    r.links = lk;
-    r.link_count = 2;
+    r.meta = mk;
+    r.meta_count = 3;
     r.ts = (uint64_t)time(NULL) * 1000ULL;
     flux_put(txn, &r);
 }
@@ -144,9 +144,10 @@ static flux_status_t import_xml(const char* in_path, flux_txn_t* txn) {
         if (!par || !chd) { p = jend + 1; continue; }
 
         /* dynamics: extract <limit lower/upper/effort/velocity> + <axis xyz> */
-        flux_meta_kv_t jm[6];
+        flux_meta_kv_t jm[8];
         int jn = 0;
-        jm[jn].key = "type"; jm[jn].val = (jtype[0] ? jtype : "fixed"); jn++;
+        jm[jn].key = "type"; jm[jn].val = (jtype[0] ? jtype : "fixed");
+        jm[jn].type = FLUX_META_STRING; jn++;
         char lo[32]={0}, hi[32]={0}, eff[32]={0}, vel[32]={0}, ax[64]={0};
         const char* lt = find_open_tag(p, "limit");
         if (lt && lt < jend) {
@@ -163,27 +164,27 @@ static flux_status_t import_xml(const char* in_path, flux_txn_t* txn) {
             const char* atc = tag_close(at);
             if (atc) get_attr(at, atc, "xyz", ax, sizeof(ax));
         }
-        if (lo[0]) { jm[jn].key="lower"; jm[jn].val=lo; jn++; }
-        if (hi[0]) { jm[jn].key="upper"; jm[jn].val=hi; jn++; }
-        if (eff[0]) { jm[jn].key="effort"; jm[jn].val=eff; jn++; }
-        if (vel[0]) { jm[jn].key="velocity"; jm[jn].val=vel; jn++; }
-        if (ax[0]) { jm[jn].key="axis"; jm[jn].val=ax; jn++; }
+        if (lo[0])  { jm[jn].key="lower";   jm[jn].val=lo;  jm[jn].type=FLUX_META_FLOAT; jn++; }
+        if (hi[0])  { jm[jn].key="upper";   jm[jn].val=hi;  jm[jn].type=FLUX_META_FLOAT; jn++; }
+        if (eff[0]) { jm[jn].key="effort";  jm[jn].val=eff; jm[jn].type=FLUX_META_FLOAT; jn++; }
+        if (vel[0]) { jm[jn].key="velocity";jm[jn].val=vel; jm[jn].type=FLUX_META_FLOAT; jn++; }
+        if (ax[0])  { jm[jn].key="axis";    jm[jn].val=ax;  jm[jn].type=FLUX_META_STRING; jn++; }
+
+        /* parent/child as REF-typed meta entries */
+        char phex[33]; flux_id_to_hex(par, phex);
+        char chex[33]; flux_id_to_hex(chd, chex);
+        char pval[80]; flux_ref_encode(pval, sizeof(pval), phex, "mechanical");
+        char cval[80]; flux_ref_encode(cval, sizeof(cval), chex, "mechanical");
+        jm[jn].key="parent"; jm[jn].val=pval; jm[jn].type=FLUX_META_REF; jn++;
+        jm[jn].key="child";  jm[jn].val=cval; jm[jn].type=FLUX_META_REF; jn++;
 
         /* build the joint record with parent/child + dynamics meta */
-        static const char* rp = "parent";
-        static const char* rc = "child";
-        flux_link_t lk[2];
-        memset(lk, 0, sizeof(lk));
-        memcpy(lk[0].target.bytes, par->bytes, 16); lk[0].rel = rp;
-        memcpy(lk[1].target.bytes, chd->bytes, 16); lk[1].rel = rc;
         flux_record_t r;
         memset(&r, 0, sizeof(r));
         r.layer = FLUX_LAYER_BODY;
         r.kind = "robot/joint";
         r.meta = jm;
         r.meta_count = (uint32_t)jn;
-        r.links = lk;
-        r.link_count = 2;
         r.ts = (uint64_t)time(NULL) * 1000ULL;
         flux_put(txn, &r);
         p = jend + 1;

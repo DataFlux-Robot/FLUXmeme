@@ -30,15 +30,10 @@ flux_status_t flux_record_encode(const flux_record_t* rec, flux_buf_t* out) {
     for (uint32_t i = 0; i < rec->meta_count; ++i) {
         const char* k = rec->meta[i].key ? rec->meta[i].key : "";
         const char* v = rec->meta[i].val ? rec->meta[i].val : "";
-        meta_sz += 4 + strlen(k) + strlen(v);
-    }
-    size_t link_sz = 0;
-    for (uint32_t i = 0; i < rec->link_count; ++i) {
-        const char* rel = rec->links[i].rel ? rec->links[i].rel : "";
-        link_sz += 16 + 2 + strlen(rel);
+        meta_sz += 5 + strlen(k) + strlen(v); /* k_len(2)+k+v_len(2)+v+type(1) */
     }
     size_t total = 16 + 4 + 8 + 4 + 32 + (2 + path_len) + (2 + ptype_len) +
-                   (2 + kind_len) + (2 + meta_sz) + (2 + link_sz) + (4 + rec->payload.len);
+                   (2 + kind_len) + (2 + meta_sz) + (4 + rec->payload.len);
 
     uint8_t* buf = (uint8_t*)malloc(total);
     if (!buf)
@@ -77,15 +72,7 @@ flux_status_t flux_record_encode(const flux_record_t* rec, flux_buf_t* out) {
         memcpy(buf + off, k, kl); off += kl;
         put_u16le(buf + off, u16min(vl)); off += 2;
         memcpy(buf + off, v, vl); off += vl;
-    }
-    put_u16le(buf + off, u16min(rec->link_count));
-    off += 2;
-    for (uint32_t i = 0; i < rec->link_count; ++i) {
-        memcpy(buf + off, rec->links[i].target.bytes, 16); off += 16;
-        const char* rel = rec->links[i].rel ? rec->links[i].rel : "";
-        size_t rl = strlen(rel);
-        put_u16le(buf + off, u16min(rl)); off += 2;
-        memcpy(buf + off, rel, rl); off += rl;
+        buf[off++] = (uint8_t)rec->meta[i].type; /* v2: type byte */
     }
     put_u32le(buf + off, (uint32_t)rec->payload.len);
     off += 4;
@@ -155,26 +142,10 @@ flux_status_t flux_record_decode(const uint8_t* body, size_t len, flux_record_t*
         READ_STR(v);
         marr[i].key = k;
         marr[i].val = v;
+        if (off + 1 > len) goto corrupt;
+        marr[i].type = (flux_meta_type_t)body[off++]; /* v2: type byte */
     }
     out->meta = marr;
-
-    if (off + 2 > len) goto corrupt;
-    uint16_t lc = get_u16le(body + off); off += 2;
-    if (lc > FLUX_MAX_LINKS) goto corrupt;
-    out->link_count = lc;
-    flux_link_t* larr = NULL;
-    if (lc) {
-        larr = (flux_link_t*)calloc(lc, sizeof(flux_link_t));
-        if (!larr) return FLUX_ERR_NOMEM;
-    }
-    for (uint16_t i = 0; i < lc; ++i) {
-        if (off + 16 > len) goto corrupt;
-        memcpy(larr[i].target.bytes, body + off, 16); off += 16;
-        char* rel = NULL;
-        READ_STR(rel);
-        larr[i].rel = rel;
-    }
-    out->links = larr;
 
     if (off + 4 > len) goto corrupt;
     uint32_t plen = get_u32le(body + off); off += 4;
@@ -208,11 +179,7 @@ void flux_record_free(flux_record_t* rec) {
         }
         free((void*)rec->meta);
     }
-    if (rec->links) {
-        for (uint32_t i = 0; i < rec->link_count; ++i)
-            free((void*)rec->links[i].rel);
-        free((void*)rec->links);
-    }
+    /* links[] removed in v2 — connections are REF-typed meta */
     free((void*)rec->payload.data);
     memset(rec, 0, sizeof(*rec));
 }

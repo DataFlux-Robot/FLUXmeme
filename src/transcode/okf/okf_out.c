@@ -6,6 +6,7 @@
  * See SPEC.md §2 (MIND layer). */
 #include "fluxmeme/fluxmeme.h"
 #include "../fsutil.h"
+#include "../../core/ref_utils.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -69,14 +70,14 @@ flux_status_t flux_to_okf(const flux_txn_t* txn, const char* out_dir) {
         if (rec.payload.len)
             fwrite(rec.payload.data, 1, rec.payload.len, fm);
 
-        /* links as wikilinks */
-        if (rec.link_count) {
-            fprintf(fm, "\n## Links\n");
-            for (uint32_t i = 0; i < rec.link_count; ++i) {
-                char th[33];
-                flux_id_to_hex(&rec.links[i].target, th);
-                const char* rel = rec.links[i].rel ? rec.links[i].rel : "related";
-                fprintf(fm, "- [[%s]] (%s)\n", th, rel);
+        /* connections (REF meta) as wikilinks */
+        {
+            char hex33[33]; const char* rel = NULL; const char* graph = NULL;
+            uint32_t nrefs = flux_ref_count(&rec);
+            if (nrefs) fprintf(fm, "\n## Links\n");
+            for (uint32_t i = 0; flux_ref_at(&rec, i, hex33, &rel, &graph) == FLUX_OK; ++i) {
+                const char* r = rel ? rel : "related";
+                fprintf(fm, "- [[%s]] (%s)\n", hex33, r);
             }
         }
         fclose(fm);
