@@ -22,10 +22,9 @@ class flux_buf_t(Structure):
     _fields_ = [("data", POINTER(c_uint8)), ("len", c_size_t)]
 
 class flux_meta_kv_t(Structure):
-    _fields_ = [("key", c_char_p), ("val", c_char_p)]
+    _fields_ = [("key", c_char_p), ("val", c_char_p), ("type", c_uint8)]
 
-class flux_link_t(Structure):
-    _fields_ = [("target", flux_id_t), ("rel", c_char_p)]
+# v2: no flux_link_t — connections are REF-typed meta entries
 
 class flux_record_t(Structure):
     _fields_ = [
@@ -38,8 +37,7 @@ class flux_record_t(Structure):
         ("kind", c_char_p),
         ("meta", POINTER(flux_meta_kv_t)),
         ("meta_count", c_uint32),
-        ("links", POINTER(flux_link_t)),
-        ("link_count", c_uint32),
+        # v2: links/link_count DELETED — connections are REF meta
         ("payload", flux_buf_t),
         ("ts", c_uint64),
         ("ver", c_uint32),
@@ -49,6 +47,7 @@ class flux_record_t(Structure):
 LAYER_BODY, LAYER_MIND, LAYER_JOURNAL = 1, 2, 4
 PCLASS_TEXT, PCLASS_BIN = 1, 2
 CLOCK_SIM, CLOCK_WALL, CLOCK_DEVICE = 0, 1, 2
+META_STRING, META_INT, META_FLOAT, META_BOOL, META_JSON, META_REF = 0, 1, 2, 3, 4, 5
 OK = 0
 
 # ---- load the shared library ----------------------------------------------

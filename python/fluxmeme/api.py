@@ -7,8 +7,9 @@ from typing import Iterator, List, Optional, Tuple
 
 from . import _core
 from ._core import (
-    flux_record_t, flux_meta_kv_t, flux_link_t, flux_id_t, flux_buf_t,
+    flux_record_t, flux_meta_kv_t, flux_id_t, flux_buf_t,
     LAYER_BODY, LAYER_MIND, LAYER_JOURNAL, PCLASS_TEXT, FluxError,
+    META_STRING, META_INT, META_FLOAT, META_BOOL, META_JSON, META_REF,
 )
 
 LAYER_NAMES = {LAYER_BODY: "BODY", LAYER_MIND: "MIND", LAYER_JOURNAL: "JOURNAL"}
@@ -32,9 +33,10 @@ class Record:
     pclass: int = PCLASS_TEXT
     clock: int = 0
     payload: bytes = b""
-    meta: dict = field(default_factory=dict)
-    links: List[Tuple[str, str]] = field(default_factory=list)  # (target_hex, rel)
-    id: Optional[str] = None        # set by put (32-hex), or provide to update
+    meta: dict = field(default_factory=dict)          # key -> value (all strings)
+    meta_types: dict = field(default_factory=dict)    # key -> META_* type (default STRING)
+    refs: List[Tuple[str, str, str]] = field(default_factory=list)  # (rel, target_hex, graph)
+    id: Optional[str] = None
     ts: int = 0
     ver: int = 0
 
@@ -164,21 +166,23 @@ def _record_to_c(rec: Record):
     c.kind = rec.kind.encode() if rec.kind else None
 
     if rec.meta:
-        arr = (flux_meta_kv_t * len(rec.meta))()
-        for i, (k, v) in enumerate(rec.meta.items()):
-            arr[i].key = str(k).encode()
-            arr[i].val = str(v).encode()
-        c.meta = ctypes.cast(arr, ctypes.POINTER(flux_meta_kv_t))
-        c.meta_count = len(rec.meta)
-        keep.append(arr)
-    if rec.links:
-        larr = (flux_link_t * len(rec.links))()
-        for i, (tgt, rel) in enumerate(rec.links):
-            larr[i].target.bytes = (ctypes.c_uint8 * 16)(*_hex_to_id(tgt))
-            larr[i].rel = rel.encode()
-        c.links = ctypes.cast(larr, ctypes.POINTER(flux_link_t))
-        c.link_count = len(rec.links)
-        keep.append(larr)
+        # combine plain meta + refs into one meta array
+        all_meta = []
+        for k, v in rec.meta.items():
+            t = rec.meta_types.get(k, META_STRING)
+            all_meta.append((k, str(v), t))
+        for rel, tgt_hex, graph in rec.refs:
+            val = f"{tgt_hex}@{graph}" if graph else tgt_hex
+            all_meta.append((rel, val, META_REF))
+        if all_meta:
+            arr = (flux_meta_kv_t * len(all_meta))()
+            for i, (k, v, t) in enumerate(all_meta):
+                arr[i].key = str(k).encode()
+                arr[i].val = str(v).encode()
+                arr[i].type = t
+            c.meta = ctypes.cast(arr, ctypes.POINTER(flux_meta_kv_t))
+            c.meta_count = len(all_meta)
+            keep.append(arr)
     if rec.payload:
         buf = (ctypes.c_uint8 * len(rec.payload))(*rec.payload)
         c.payload.data = ctypes.cast(buf, ctypes.POINTER(ctypes.c_uint8))
@@ -200,18 +204,26 @@ def _record_from_c(c: flux_record_t) -> Record:
     rec.ts = int(c.ts)
     rec.ver = int(c.ver)
     meta = {}
+    meta_types = {}
+    refs = []
     for i in range(c.meta_count):
         kv = c.meta[i]
         k = kv.key.decode("utf-8", "replace") if kv.key else ""
         v = kv.val.decode("utf-8", "replace") if kv.val else ""
-        meta[k] = v
+        t = int(kv.type)
+        if t == META_REF:
+            # parse "hex@graph"
+            if "@" in v:
+                hex_id, graph = v.split("@", 1)
+            else:
+                hex_id, graph = v, ""
+            refs.append((k, hex_id, graph))
+        else:
+            meta[k] = v
+            meta_types[k] = t
     rec.meta = meta
-    links = []
-    for i in range(c.link_count):
-        lk = c.links[i]
-        links.append((_id_to_hex(bytes(lk.target.bytes)),
-                      lk.rel.decode("utf-8", "replace") if lk.rel else ""))
-    rec.links = links
+    rec.meta_types = meta_types
+    rec.refs = refs
     if c.payload.len:
         rec.payload = bytes(ctypes.string_at(c.payload.data, c.payload.len))
     else:
